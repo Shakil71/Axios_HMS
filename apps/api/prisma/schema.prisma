@@ -1,0 +1,1600 @@
+// Overseas Medical Treatment Platform — PostgreSQL schema
+// Conventions: UUID PKs, createdAt/updatedAt on every mutable entity, soft delete (deletedAt)
+// on patient-facing/clinical records, snake_case tables via @@map.
+// Sensitive identifiers (NID/passport numbers) are stored ENCRYPTED at the application layer
+// (AES-256-GCM, key from KMS/env) in the *Enc columns — never plaintext.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── ENUMS ─────────────────────────────
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNSPECIFIED
+}
+
+enum Relationship {
+  SPOUSE
+  FATHER
+  MOTHER
+  SON
+  DAUGHTER
+  BROTHER
+  SISTER
+  GRANDPARENT
+  RELATIVE
+  OTHER
+}
+
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+  PHONE_OTP
+}
+
+enum QualificationKind {
+  DEGREE
+  CERTIFICATION
+  MEMBERSHIP
+  PUBLICATION
+  AWARD
+  EXPERTISE
+}
+
+enum CasePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum CaseStatus {
+  NEW
+  DOCUMENT_COLLECTION
+  MEDICAL_REVIEW
+  DOCTOR_REVIEW
+  HOSPITAL_SELECTION
+  QUOTATION
+  APPOINTMENT
+  VISA_PROCESSING
+  TRAVEL_PLANNING
+  TREATMENT_IN_PROGRESS
+  DISCHARGE
+  RETURNING
+  FOLLOW_UP
+  COMPLETED
+  CANCELLED
+}
+
+enum StaffCaseRole {
+  MEDICAL_COORDINATOR
+  CASE_MANAGER
+  VISA_OFFICER
+  TRAVEL_COORDINATOR
+  FINANCE
+}
+
+enum Visibility {
+  INTERNAL
+  PATIENT_VISIBLE
+}
+
+enum TimelineEventType {
+  CASE_CREATED
+  STATUS_CHANGED
+  DOCUMENT_UPLOADED
+  DOCUMENT_VERIFIED
+  DOCUMENT_REJECTED
+  COORDINATOR_ASSIGNED
+  DOCTOR_RECOMMENDED
+  HOSPITAL_SELECTED
+  APPOINTMENT_UPDATED
+  VISA_UPDATED
+  TRAVEL_UPDATED
+  PAYMENT_UPDATED
+  NOTE
+  OTHER
+}
+
+enum DocumentCategory {
+  NID
+  PASSPORT
+  VISA
+  PASSPORT_PHOTO
+  MEDICAL_REPORT
+  PRESCRIPTION
+  DIAGNOSTIC_REPORT
+  CT_SCAN
+  MRI
+  XRAY
+  BLOOD_TEST
+  PREVIOUS_TREATMENT_RECORD
+  DOCTOR_REFERRAL
+  INSURANCE
+  FLIGHT
+  HOTEL
+  OTHER
+}
+
+// Drives which staff permission ("documents.view.<sensitivity>") is needed.
+enum DocumentSensitivity {
+  IDENTITY // NID, passport, passport photo
+  MEDICAL // reports, scans, prescriptions
+  TRAVEL // visa, flight, hotel
+  FINANCIAL // insurance, receipts
+  GENERAL
+}
+
+enum DocumentStatus {
+  UPLOADED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  SKIPPED
+}
+
+enum DocumentAccessAction {
+  URL_ISSUED
+  VIEW
+  DOWNLOAD
+  UPLOAD
+  REPLACE
+  VERIFY
+  REJECT
+  DELETE
+  DENIED
+}
+
+enum AppointmentType {
+  ONLINE_CONSULTATION
+  HOSPITAL_CONSULTATION
+  FOLLOW_UP
+  DIAGNOSTIC
+  SURGERY
+  SECOND_OPINION
+}
+
+enum ConsultationMethod {
+  IN_PERSON
+  VIDEO
+  PHONE
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  RESCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum VisaStatus {
+  DOCUMENT_COLLECTION
+  SUBMITTED
+  UNDER_PROCESSING
+  ADDITIONAL_DOCUMENT_REQUIRED
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum VisaDocumentStatus {
+  MISSING
+  SUBMITTED
+  VERIFIED
+  REJECTED
+}
+
+enum FlightDirection {
+  OUTBOUND
+  RETURN
+  INTERNAL
+}
+
+enum TransportType {
+  AIRPORT_PICKUP
+  AIRPORT_DROP
+  HOSPITAL_TRANSFER
+  OTHER
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIAL
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  MOBILE_BANKING
+  GATEWAY
+  OTHER
+}
+
+enum ConversationType {
+  CASE
+  SUPPORT
+}
+
+enum NotificationType {
+  DOCUMENT_UPLOADED
+  DOCUMENT_VERIFIED
+  DOCUMENT_REJECTED
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_CHANGED
+  APPOINTMENT_UPCOMING
+  VISA_STATUS_CHANGED
+  PAYMENT_RECEIVED
+  CASE_STATUS_CHANGED
+  NEW_MESSAGE
+  MISSING_DOCUMENT
+  SYSTEM
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum DeliveryStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// ─────────────────────── IDENTITY & RBAC ───────────────────────
+
+model User {
+  id                String     @id @default(uuid()) @db.Uuid
+  email             String     @unique
+  phone             String?    @unique
+  passwordHash      String
+  fullName          String
+  avatarKey         String?
+  status            UserStatus @default(PENDING_VERIFICATION)
+  emailVerifiedAt   DateTime?
+  phoneVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  failedLoginCount  Int        @default(0)
+  lockedUntil       DateTime?
+  passwordChangedAt DateTime?
+  sessionVersion    Int        @default(0) // bump to invalidate all outstanding access tokens
+  deletedAt         DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  roles                    UserRole[]
+  sessions                 RefreshToken[]
+  verificationTokens       VerificationToken[]
+  patientProfile           PatientProfile?
+  doctorProfile            Doctor?                   @relation("DoctorUser")
+  doctorsVerified          Doctor[]                  @relation("DoctorVerifier")
+  timelineEvents           CaseTimeline[]            @relation("TimelineActor")
+  caseNotes                CaseNote[]                @relation("NoteAuthor")
+  caseAssignments          CaseAssignment[]          @relation("AssignmentStaff")
+  assignmentsMade          CaseAssignment[]          @relation("AssignmentAssigner")
+  documentsVerified        Document[]                @relation("DocumentVerifier")
+  documentVersionsUploaded DocumentVersion[]         @relation("VersionUploader")
+  documentAccessLogs       DocumentAccessLog[]
+  appointmentsCreated      Appointment[]             @relation("AppointmentCreator")
+  visaCasesAssigned        VisaCase[]                @relation("VisaOfficer")
+  invoicesCreated          Invoice[]                 @relation("InvoiceCreator")
+  paymentsRecorded         Payment[]                 @relation("PaymentRecorder")
+  conversationsCreated     Conversation[]            @relation("ConversationCreator")
+  participations           ConversationParticipant[]
+  messagesSent             Message[]
+  notifications            Notification[]
+  auditLogs                AuditLog[]
+  blogPosts                BlogPost[]
+  settingsUpdated          SystemSetting[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique // SUPER_ADMIN, ADMIN, MEDICAL_COORDINATOR, ...
+  description String?
+  isSystem    Boolean  @default(false) // system roles cannot be deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique // e.g. "documents.view.medical"
+  module      String // e.g. "documents"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// Refresh-token rotation with reuse detection: every token belongs to a family; presenting
+// a revoked token revokes the whole family.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  familyId     String    @db.Uuid
+  tokenHash    String    @unique // SHA-256 of the opaque token
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?   @db.Uuid
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model VerificationToken {
+  id         String                @id @default(uuid()) @db.Uuid
+  userId     String                @db.Uuid
+  type       VerificationTokenType
+  tokenHash  String                @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("verification_tokens")
+}
+
+// ───────────────────────── PATIENTS ─────────────────────────
+
+model PatientProfile {
+  id                       String    @id @default(uuid()) @db.Uuid
+  userId                   String    @unique @db.Uuid
+  dateOfBirth              DateTime? @db.Date
+  gender                   Gender    @default(UNSPECIFIED)
+  countryId                String?   @db.Uuid
+  city                     String?
+  address                  String?
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  emergencyContactRelation String?
+  passportNumberEnc        String? // AES-256-GCM ciphertext
+  passportExpiry           DateTime? @db.Date
+  nidNumberEnc             String? // AES-256-GCM ciphertext
+  bloodGroup               String?
+  allergies                String?
+  chronicConditions        String?
+  preferredLanguage        String?
+  notifyEmail              Boolean   @default(true)
+  notifySms                Boolean   @default(true)
+  notifyWhatsapp           Boolean   @default(false)
+  deletedAt                DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  country       Country?       @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  familyMembers FamilyMember[]
+  cases         MedicalCase[]
+  documents     Document[]
+  appointments  Appointment[]
+  visaCases     VisaCase[]
+  invoices      Invoice[]
+
+  @@index([countryId])
+  @@index([createdAt])
+  @@map("patient_profiles")
+}
+
+model FamilyMember {
+  id                String       @id @default(uuid()) @db.Uuid
+  patientId         String       @db.Uuid
+  fullName          String
+  relationship      Relationship
+  dateOfBirth       DateTime?    @db.Date
+  gender            Gender       @default(UNSPECIFIED)
+  phone             String?
+  passportNumberEnc String?
+  passportExpiry    DateTime?    @db.Date
+  nidNumberEnc      String?
+  medicalNotes      String?
+  deletedAt         DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  patient      PatientProfile @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  cases        MedicalCase[]
+  documents    Document[]
+  appointments Appointment[]
+  visaCases    VisaCase[]
+
+  @@index([patientId])
+  @@map("family_members")
+}
+
+// ───────────────────── GEOGRAPHY / DIRECTORY ─────────────────────
+
+model Country {
+  id                       String        @id @default(uuid()) @db.Uuid
+  slug                     String        @unique
+  name                     String
+  isoCode                  String        @unique @db.VarChar(2)
+  flagUrl                  String?
+  coverImageKey            String?
+  description              String?
+  whyChoose                String?
+  startingConsultationInfo String?
+  visaInformation          String? // general, non-legal-advice narrative
+  travelInformation        String?
+  accommodationInformation String?
+  isMedicalDestination     Boolean       @default(true)
+  isFeatured               Boolean       @default(false)
+  sortOrder                Int           @default(0)
+  status                   PublishStatus @default(DRAFT)
+  metaTitle                String?
+  metaDescription          String?
+  deletedAt                DateTime?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+
+  cities           City[]
+  hospitals        Hospital[]
+  patients         PatientProfile[]
+  visaRequirements VisaRequirement[]
+  visaCases        VisaCase[]
+  preferredByCases MedicalCase[]     @relation("CasePreferredCountry")
+  faqs             Faq[]
+
+  @@index([status, isFeatured])
+  @@map("countries")
+}
+
+model City {
+  id           String   @id @default(uuid()) @db.Uuid
+  countryId    String   @db.Uuid
+  slug         String
+  name         String
+  isMedicalHub Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  country   Country    @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  hospitals Hospital[]
+
+  @@unique([countryId, slug])
+  @@map("cities")
+}
+
+model Language {
+  id   String @id @default(uuid()) @db.Uuid
+  code String @unique // ISO 639-1
+  name String
+
+  doctors   DoctorLanguage[]
+  hospitals HospitalLanguage[]
+
+  @@map("languages")
+}
+
+model Specialty {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctors    DoctorSpecialty[]
+  hospitals  HospitalSpecialty[]
+  treatments TreatmentSpecialty[]
+
+  @@map("specialties")
+}
+
+model Accreditation {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String // e.g. JCI, NABH — admin-entered only
+  description String?
+  logoKey     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hospitals HospitalAccreditation[]
+
+  @@map("accreditations")
+}
+
+model Hospital {
+  id                     String        @id @default(uuid()) @db.Uuid
+  slug                   String        @unique
+  name                   String
+  logoKey                String?
+  coverImageKey          String?
+  countryId              String        @db.Uuid
+  cityId                 String?       @db.Uuid
+  address                String?
+  website                String?
+  phone                  String?
+  email                  String?
+  emergencyPhone         String?
+  description            String?
+  patientInformation     String?
+  internationalDeptInfo  String?
+  medicalTourismServices String?
+  isFeatured             Boolean       @default(false)
+  status                 PublishStatus @default(DRAFT)
+  metaTitle              String?
+  metaDescription        String?
+  deletedAt              DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  country          Country                 @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  city             City?                   @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  departments      HospitalDepartment[]
+  facilities       HospitalFacility[]
+  gallery          HospitalImage[]
+  accreditations   HospitalAccreditation[]
+  specialties      HospitalSpecialty[]
+  languages        HospitalLanguage[]
+  treatments       HospitalTreatment[]
+  doctors          DoctorHospital[]
+  appointments     Appointment[]
+  preferredByCases MedicalCase[]           @relation("CasePreferredHospital")
+  selectedByCases  MedicalCase[]           @relation("CaseSelectedHospital")
+
+  @@index([countryId, status])
+  @@index([cityId])
+  @@index([status, isFeatured])
+  @@map("hospitals")
+}
+
+model HospitalDepartment {
+  id          String   @id @default(uuid()) @db.Uuid
+  hospitalId  String   @db.Uuid
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@index([hospitalId])
+  @@map("hospital_departments")
+}
+
+model HospitalFacility {
+  id         String @id @default(uuid()) @db.Uuid
+  hospitalId String @db.Uuid
+  name       String
+  sortOrder  Int    @default(0)
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@index([hospitalId])
+  @@map("hospital_facilities")
+}
+
+model HospitalImage {
+  id         String  @id @default(uuid()) @db.Uuid
+  hospitalId String  @db.Uuid
+  imageKey   String
+  altText    String?
+  sortOrder  Int     @default(0)
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@index([hospitalId])
+  @@map("hospital_images")
+}
+
+model HospitalAccreditation {
+  hospitalId      String    @db.Uuid
+  accreditationId String    @db.Uuid
+  validUntil      DateTime? @db.Date
+
+  hospital      Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  accreditation Accreditation @relation(fields: [accreditationId], references: [id], onDelete: Restrict)
+
+  @@id([hospitalId, accreditationId])
+  @@map("hospital_accreditations")
+}
+
+model HospitalSpecialty {
+  hospitalId  String @db.Uuid
+  specialtyId String @db.Uuid
+
+  hospital  Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+
+  @@id([hospitalId, specialtyId])
+  @@index([specialtyId])
+  @@map("hospital_specialties")
+}
+
+model HospitalLanguage {
+  hospitalId String @db.Uuid
+  languageId String @db.Uuid
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageId], references: [id], onDelete: Restrict)
+
+  @@id([hospitalId, languageId])
+  @@map("hospital_languages")
+}
+
+model Doctor {
+  id                String        @id @default(uuid()) @db.Uuid
+  slug              String        @unique
+  userId            String?       @unique @db.Uuid // set when the doctor has a portal account
+  fullName          String
+  title             String? // Dr., Prof.
+  designation       String?
+  photoKey          String?
+  bio               String?
+  yearsOfExperience Int?
+  consultationInfo  String?
+  // Public profile is shown only when verified by staff from source documents.
+  isVerified        Boolean       @default(false)
+  verifiedAt        DateTime?
+  verifiedById      String?       @db.Uuid
+  isFeatured        Boolean       @default(false)
+  status            PublishStatus @default(DRAFT)
+  metaTitle         String?
+  metaDescription   String?
+  deletedAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user             User?                   @relation("DoctorUser", fields: [userId], references: [id], onDelete: SetNull)
+  verifiedBy       User?                   @relation("DoctorVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  qualifications   DoctorQualification[]
+  specialties      DoctorSpecialty[]
+  hospitals        DoctorHospital[]
+  languages        DoctorLanguage[]
+  treatments       DoctorTreatment[]
+  appointmentTypes DoctorAppointmentType[]
+  appointments     Appointment[]
+  selectedByCases  MedicalCase[]           @relation("CaseSelectedDoctor")
+
+  @@index([status, isVerified])
+  @@index([yearsOfExperience])
+  @@map("doctors")
+}
+
+model DoctorQualification {
+  id          String            @id @default(uuid()) @db.Uuid
+  doctorId    String            @db.Uuid
+  kind        QualificationKind
+  title       String
+  institution String?
+  year        Int?
+  url         String?
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, kind])
+  @@map("doctor_qualifications")
+}
+
+model DoctorSpecialty {
+  doctorId       String  @db.Uuid
+  specialtyId    String  @db.Uuid
+  isPrimary      Boolean @default(false)
+  isSubSpecialty Boolean @default(false)
+
+  doctor    Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+
+  @@id([doctorId, specialtyId])
+  @@index([specialtyId])
+  @@map("doctor_specialties")
+}
+
+model DoctorHospital {
+  doctorId    String  @db.Uuid
+  hospitalId  String  @db.Uuid
+  isPrimary   Boolean @default(false)
+  designation String?
+
+  doctor   Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, hospitalId])
+  @@index([hospitalId])
+  @@map("doctor_hospitals")
+}
+
+model DoctorLanguage {
+  doctorId   String @db.Uuid
+  languageId String @db.Uuid
+
+  doctor   Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageId], references: [id], onDelete: Restrict)
+
+  @@id([doctorId, languageId])
+  @@map("doctor_languages")
+}
+
+model DoctorAppointmentType {
+  doctorId String          @db.Uuid
+  type     AppointmentType
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, type])
+  @@map("doctor_appointment_types")
+}
+
+// ───────────────────────── TREATMENTS ─────────────────────────
+
+model TreatmentCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String
+  description String?
+  iconKey     String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  treatments Treatment[]
+
+  @@map("treatment_categories")
+}
+
+model Treatment {
+  id               String        @id @default(uuid()) @db.Uuid
+  slug             String        @unique
+  categoryId       String        @db.Uuid
+  name             String
+  summary          String?
+  description      String?
+  symptoms         String?
+  treatmentOptions String?
+  preparationInfo  String?
+  status           PublishStatus @default(DRAFT)
+  metaTitle        String?
+  metaDescription  String?
+  deletedAt        DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  category    TreatmentCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  specialties TreatmentSpecialty[]
+  doctors     DoctorTreatment[]
+  hospitals   HospitalTreatment[]
+  related     TreatmentRelation[]  @relation("TreatmentRelationFrom")
+  relatedFrom TreatmentRelation[]  @relation("TreatmentRelationTo")
+  cases       MedicalCase[]
+  faqs        Faq[]
+
+  @@index([categoryId, status])
+  @@map("treatments")
+}
+
+model TreatmentSpecialty {
+  treatmentId String @db.Uuid
+  specialtyId String @db.Uuid
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+
+  @@id([treatmentId, specialtyId])
+  @@map("treatment_specialties")
+}
+
+model TreatmentRelation {
+  treatmentId        String @db.Uuid
+  relatedTreatmentId String @db.Uuid
+
+  treatment        Treatment @relation("TreatmentRelationFrom", fields: [treatmentId], references: [id], onDelete: Cascade)
+  relatedTreatment Treatment @relation("TreatmentRelationTo", fields: [relatedTreatmentId], references: [id], onDelete: Cascade)
+
+  @@id([treatmentId, relatedTreatmentId])
+  @@map("treatment_relations")
+}
+
+model DoctorTreatment {
+  doctorId    String @db.Uuid
+  treatmentId String @db.Uuid
+
+  doctor    Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@id([doctorId, treatmentId])
+  @@index([treatmentId])
+  @@map("doctor_treatments")
+}
+
+model HospitalTreatment {
+  hospitalId  String @db.Uuid
+  treatmentId String @db.Uuid
+
+  hospital  Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@id([hospitalId, treatmentId])
+  @@index([treatmentId])
+  @@map("hospital_treatments")
+}
+
+// ─────────────────────── MEDICAL CASES ───────────────────────
+
+model MedicalCase {
+  id                   String       @id @default(uuid()) @db.Uuid
+  caseNumber           String       @unique // human-readable, e.g. MC-2026-000123 (DB sequence)
+  patientId            String       @db.Uuid
+  familyMemberId       String?      @db.Uuid
+  treatmentId          String?      @db.Uuid
+  preferredCountryId   String?      @db.Uuid
+  preferredHospitalId  String?      @db.Uuid
+  selectedDoctorId     String?      @db.Uuid
+  selectedHospitalId   String?      @db.Uuid
+  symptoms             String?
+  medicalHistory       String?
+  currentDiagnosis     String?
+  previousTreatment    String?
+  currentMedications   String?
+  emergencyInformation String?
+  preferredTravelDate  DateTime?    @db.Date
+  budgetMin            Decimal?     @db.Decimal(12, 2)
+  budgetMax            Decimal?     @db.Decimal(12, 2)
+  budgetCurrency       String?      @db.VarChar(3)
+  priority             CasePriority @default(NORMAL)
+  status               CaseStatus   @default(NEW)
+  closedAt             DateTime?
+  deletedAt            DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  patient           PatientProfile   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  familyMember      FamilyMember?    @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  treatment         Treatment?       @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+  preferredCountry  Country?         @relation("CasePreferredCountry", fields: [preferredCountryId], references: [id], onDelete: SetNull)
+  preferredHospital Hospital?        @relation("CasePreferredHospital", fields: [preferredHospitalId], references: [id], onDelete: SetNull)
+  selectedHospital  Hospital?        @relation("CaseSelectedHospital", fields: [selectedHospitalId], references: [id], onDelete: SetNull)
+  selectedDoctor    Doctor?          @relation("CaseSelectedDoctor", fields: [selectedDoctorId], references: [id], onDelete: SetNull)
+  timeline          CaseTimeline[]
+  notes             CaseNote[]
+  assignments       CaseAssignment[]
+  documents         Document[]
+  appointments      Appointment[]
+  visaCases         VisaCase[]
+  travelPlan        TravelPlan?
+  invoices          Invoice[]
+  conversations     Conversation[]
+
+  @@index([status])
+  @@index([patientId])
+  @@index([priority, status])
+  @@index([createdAt])
+  @@map("medical_cases")
+}
+
+model CaseTimeline {
+  id          String            @id @default(uuid()) @db.Uuid
+  caseId      String            @db.Uuid
+  type        TimelineEventType
+  title       String
+  description String?
+  visibility  Visibility        @default(PATIENT_VISIBLE)
+  fromStatus  CaseStatus?
+  toStatus    CaseStatus?
+  actorId     String?           @db.Uuid
+  occurredAt  DateTime          @default(now())
+  createdAt   DateTime          @default(now())
+
+  case  MedicalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  actor User?       @relation("TimelineActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, occurredAt])
+  @@map("case_timeline")
+}
+
+model CaseNote {
+  id         String     @id @default(uuid()) @db.Uuid
+  caseId     String     @db.Uuid
+  authorId   String     @db.Uuid
+  body       String
+  visibility Visibility @default(INTERNAL)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  case   MedicalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  author User        @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([caseId, visibility])
+  @@map("case_notes")
+}
+
+// Object-level authorization: a staff member sees a case (and its sensitive documents)
+// only while they hold an active assignment, unless their role carries a "*.all" scope.
+model CaseAssignment {
+  id           String        @id @default(uuid()) @db.Uuid
+  caseId       String        @db.Uuid
+  staffId      String        @db.Uuid
+  role         StaffCaseRole
+  assignedById String?       @db.Uuid
+  assignedAt   DateTime      @default(now())
+  unassignedAt DateTime?
+
+  case       MedicalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  staff      User        @relation("AssignmentStaff", fields: [staffId], references: [id], onDelete: Restrict)
+  assignedBy User?       @relation("AssignmentAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([caseId, unassignedAt])
+  @@index([staffId, unassignedAt])
+  @@map("case_assignments")
+}
+
+// ───────────────────────── DOCUMENTS ─────────────────────────
+// Metadata only. Bytes live in private, encrypted object storage; access is via short-lived
+// signed URLs issued after object-level authorization + an access-log entry.
+
+model Document {
+  id              String              @id @default(uuid()) @db.Uuid
+  patientId       String              @db.Uuid
+  familyMemberId  String?             @db.Uuid
+  caseId          String?             @db.Uuid
+  category        DocumentCategory
+  sensitivity     DocumentSensitivity
+  title           String?
+  status          DocumentStatus      @default(UPLOADED)
+  expiresAt       DateTime?           @db.Date
+  currentVersion  Int                 @default(1)
+  rejectionReason String?
+  verifiedById    String?             @db.Uuid
+  verifiedAt      DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  patient       PatientProfile      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  familyMember  FamilyMember?       @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  case          MedicalCase?        @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  verifiedBy    User?               @relation("DocumentVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  versions      DocumentVersion[]
+  accessLogs    DocumentAccessLog[]
+  visaDocuments VisaDocument[]
+  flights       Flight[]
+  hotels        Hotel[]
+
+  @@index([status])
+  @@index([patientId, category])
+  @@index([caseId])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id               String     @id @default(uuid()) @db.Uuid
+  documentId       String     @db.Uuid
+  versionNo        Int
+  storageKey       String     @unique // opaque random key, never derived from PII
+  originalFileName String
+  mimeType         String
+  sizeBytes        BigInt
+  sha256           String
+  scanStatus       ScanStatus @default(PENDING)
+  uploadedById     String     @db.Uuid
+  createdAt        DateTime   @default(now())
+  completedAt      DateTime? // set once the bytes are verified in storage; NULL = upload not finished
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy User     @relation("VersionUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, versionNo])
+  @@map("document_versions")
+}
+
+model DocumentAccessLog {
+  id         String               @id @default(uuid()) @db.Uuid
+  documentId String               @db.Uuid
+  versionNo  Int?
+  userId     String               @db.Uuid
+  action     DocumentAccessAction
+  granted    Boolean              @default(true)
+  denyReason String?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime             @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([documentId, createdAt])
+  @@index([userId, createdAt])
+  @@map("document_access_logs")
+}
+
+// ─────────────────────── APPOINTMENTS ───────────────────────
+
+model Appointment {
+  id              String             @id @default(uuid()) @db.Uuid
+  caseId          String             @db.Uuid
+  patientId       String             @db.Uuid
+  familyMemberId  String?            @db.Uuid
+  doctorId        String?            @db.Uuid
+  hospitalId      String?            @db.Uuid
+  scheduledAt     DateTime
+  durationMinutes Int                @default(30)
+  timezone        String             @default("UTC")
+  type            AppointmentType
+  method          ConsultationMethod
+  status          AppointmentStatus  @default(REQUESTED)
+  notes           String? // patient-visible
+  internalNotes   String?
+  meetingUrl      String?
+  createdById     String?            @db.Uuid
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  case         MedicalCase    @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  patient      PatientProfile @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  familyMember FamilyMember?  @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  doctor       Doctor?        @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  hospital     Hospital?      @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
+  createdBy    User?          @relation("AppointmentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([scheduledAt])
+  @@index([status, scheduledAt])
+  @@index([caseId])
+  @@index([doctorId, scheduledAt])
+  @@map("appointments")
+}
+
+// ───────────────────────────── VISA ─────────────────────────────
+
+// Country-specific checklist, editable by admin.
+model VisaRequirement {
+  id          String   @id @default(uuid()) @db.Uuid
+  countryId   String   @db.Uuid
+  name        String
+  description String?
+  isMandatory Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  country   Country        @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  documents VisaDocument[]
+
+  @@index([countryId])
+  @@map("visa_requirements")
+}
+
+model VisaCase {
+  id                     String     @id @default(uuid()) @db.Uuid
+  caseId                 String     @db.Uuid
+  patientId              String     @db.Uuid
+  familyMemberId         String?    @db.Uuid
+  countryId              String     @db.Uuid
+  status                 VisaStatus @default(DOCUMENT_COLLECTION)
+  referenceNumber        String?
+  applicationDate        DateTime?  @db.Date
+  decisionDate           DateTime?  @db.Date
+  expectedProcessingInfo String?
+  patientRemarks         String? // staff remarks visible to patient
+  internalRemarks        String?
+  officerId              String?    @db.Uuid
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  case         MedicalCase    @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  patient      PatientProfile @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  familyMember FamilyMember?  @relation(fields: [familyMemberId], references: [id], onDelete: SetNull)
+  country      Country        @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  officer      User?          @relation("VisaOfficer", fields: [officerId], references: [id], onDelete: SetNull)
+  documents    VisaDocument[]
+
+  @@index([status])
+  @@index([caseId])
+  @@index([countryId])
+  @@map("visa_cases")
+}
+
+model VisaDocument {
+  id            String             @id @default(uuid()) @db.Uuid
+  visaCaseId    String             @db.Uuid
+  requirementId String?            @db.Uuid
+  documentId    String?            @db.Uuid
+  status        VisaDocumentStatus @default(MISSING)
+  remarks       String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  visaCase    VisaCase         @relation(fields: [visaCaseId], references: [id], onDelete: Cascade)
+  requirement VisaRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  document    Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([visaCaseId])
+  @@map("visa_documents")
+}
+
+// ───────────────────────────── TRAVEL ─────────────────────────────
+
+model TravelPlan {
+  id                    String   @id @default(uuid()) @db.Uuid
+  caseId                String   @unique @db.Uuid
+  travelerCount         Int      @default(1)
+  localCoordinatorName  String?
+  localCoordinatorPhone String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  case       MedicalCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  flights    Flight[]
+  hotels     Hotel[]
+  transports Transport[]
+
+  @@map("travel_plans")
+}
+
+model Flight {
+  id               String          @id @default(uuid()) @db.Uuid
+  travelPlanId     String          @db.Uuid
+  direction        FlightDirection
+  airline          String?
+  flightNumber     String?
+  departureAirport String
+  arrivalAirport   String
+  departureAt      DateTime
+  arrivalAt        DateTime?
+  bookingReference String?
+  documentId       String?         @db.Uuid
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  travelPlan TravelPlan @relation(fields: [travelPlanId], references: [id], onDelete: Cascade)
+  document   Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([travelPlanId, departureAt])
+  @@map("flights")
+}
+
+model Hotel {
+  id               String    @id @default(uuid()) @db.Uuid
+  travelPlanId     String    @db.Uuid
+  name             String
+  address          String?
+  phone            String?
+  checkInDate      DateTime  @db.Date
+  checkOutDate     DateTime? @db.Date
+  bookingReference String?
+  roomInfo         String?
+  documentId       String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  travelPlan TravelPlan @relation(fields: [travelPlanId], references: [id], onDelete: Cascade)
+  document   Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([travelPlanId])
+  @@map("hotels")
+}
+
+model Transport {
+  id             String        @id @default(uuid()) @db.Uuid
+  travelPlanId   String        @db.Uuid
+  type           TransportType
+  pickupLocation String?
+  dropLocation   String?
+  scheduledAt    DateTime?
+  driverName     String?
+  driverPhone    String?
+  vehicleInfo    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  travelPlan TravelPlan @relation(fields: [travelPlanId], references: [id], onDelete: Cascade)
+
+  @@index([travelPlanId, scheduledAt])
+  @@map("transports")
+}
+
+// ───────────────────────────── FINANCE ─────────────────────────────
+
+model Invoice {
+  id            String        @id @default(uuid()) @db.Uuid
+  invoiceNumber String        @unique
+  caseId        String        @db.Uuid
+  patientId     String        @db.Uuid
+  currency      String        @db.VarChar(3)
+  subtotal      Decimal       @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  tax           Decimal       @default(0) @db.Decimal(12, 2)
+  total         Decimal       @db.Decimal(12, 2)
+  status        InvoiceStatus @default(PENDING)
+  issuedAt      DateTime      @default(now())
+  dueDate       DateTime?     @db.Date
+  notes         String?
+  createdById   String?       @db.Uuid
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  case      MedicalCase    @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  createdBy User?          @relation("InvoiceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  items     InvoiceItem[]
+  payments  Payment[]
+
+  @@index([status])
+  @@index([caseId])
+  @@index([patientId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  invoiceId   String  @db.Uuid
+  description String
+  quantity    Int     @default(1)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  amount      Decimal @db.Decimal(12, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id            String        @id @default(uuid()) @db.Uuid
+  invoiceId     String        @db.Uuid
+  amount        Decimal       @db.Decimal(12, 2)
+  currency      String        @db.VarChar(3)
+  method        PaymentMethod
+  provider      String? // payment-gateway adapter key, e.g. "manual", "sslcommerz"
+  transactionId String?
+  status        PaymentStatus @default(PENDING)
+  paidAt        DateTime?
+  receiptNumber String?       @unique
+  recordedById  String?       @db.Uuid
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  recordedBy User?   @relation("PaymentRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([provider, transactionId])
+  @@index([invoiceId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ───────────────────────── MESSAGING ─────────────────────────
+
+model Conversation {
+  id            String           @id @default(uuid()) @db.Uuid
+  type          ConversationType @default(CASE)
+  caseId        String?          @db.Uuid
+  subject       String?
+  createdById   String           @db.Uuid
+  lastMessageAt DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  case         MedicalCase?              @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  createdBy    User                      @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([caseId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+// lastReadAt provides per-user read/unread state.
+model ConversationParticipant {
+  conversationId String    @db.Uuid
+  userId         String    @db.Uuid
+  lastReadAt     DateTime?
+  joinedAt       DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String    @id @default(uuid()) @db.Uuid
+  conversationId String    @db.Uuid
+  senderId       String    @db.Uuid
+  body           String
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  attachments  MessageAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id               String     @id @default(uuid()) @db.Uuid
+  messageId        String     @db.Uuid
+  storageKey       String     @unique
+  originalFileName String
+  mimeType         String
+  sizeBytes        BigInt
+  scanStatus       ScanStatus @default(PENDING)
+  createdAt        DateTime   @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("message_attachments")
+}
+
+// ─────────────────────── NOTIFICATIONS ───────────────────────
+
+model Notification {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @db.Uuid
+  type       NotificationType
+  title      String
+  body       String?
+  entityType String?
+  entityId   String?          @db.Uuid
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+// One row per channel attempt; provider adapters (SMTP, SMS, WhatsApp) plug in behind this.
+model NotificationDelivery {
+  id                String              @id @default(uuid()) @db.Uuid
+  notificationId    String              @db.Uuid
+  channel           NotificationChannel
+  status            DeliveryStatus      @default(QUEUED)
+  provider          String?
+  providerMessageId String?
+  attempts          Int                 @default(0)
+  lastError         String?
+  sentAt            DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([status, channel])
+  @@map("notification_deliveries")
+}
+
+// ───────────────────────────── AUDIT ─────────────────────────────
+// Append-only. A DB trigger (prisma/migrations/0002_audit_immutable) rejects UPDATE/DELETE, and the
+// application role is granted INSERT/SELECT only.
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String?  @db.Uuid
+  actorRole    String?
+  action       String // e.g. "auth.login", "document.download"
+  resourceType String
+  resourceId   String?
+  ip           String?
+  userAgent    String?
+  before       Json?
+  after        Json?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ───────────────────────────── CMS ─────────────────────────────
+
+model CmsPage {
+  id              String        @id @default(uuid()) @db.Uuid
+  slug            String        @unique // "home", "about", ...
+  title           String
+  status          PublishStatus @default(DRAFT)
+  metaTitle       String?
+  metaDescription String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  sections CmsSection[]
+
+  @@map("cms_pages")
+}
+
+model CmsSection {
+  id        String   @id @default(uuid()) @db.Uuid
+  pageId    String   @db.Uuid
+  key       String // "hero", "why-choose-us", "mission", ...
+  title     String?
+  body      String?
+  imageKey  String?
+  ctaLabel  String?
+  ctaUrl    String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  page CmsPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, key])
+  @@map("cms_sections")
+}
+
+model Faq {
+  id          String        @id @default(uuid()) @db.Uuid
+  question    String
+  answer      String
+  countryId   String?       @db.Uuid
+  treatmentId String?       @db.Uuid
+  sortOrder   Int           @default(0)
+  status      PublishStatus @default(DRAFT)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  country   Country?   @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  treatment Treatment? @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+
+  @@index([status, sortOrder])
+  @@map("faqs")
+}
+
+model BlogPost {
+  id              String        @id @default(uuid()) @db.Uuid
+  slug            String        @unique
+  title           String
+  excerpt         String?
+  body            String
+  coverImageKey   String?
+  authorId        String?       @db.Uuid
+  status          PublishStatus @default(DRAFT)
+  publishedAt     DateTime?
+  metaTitle       String?
+  metaDescription String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([status, publishedAt])
+  @@map("blog_posts")
+}
+
+// Only real testimonials with recorded patient consent may be published.
+model Testimonial {
+  id             String        @id @default(uuid()) @db.Uuid
+  authorName     String
+  authorLocation String?
+  body           String
+  hasConsent     Boolean       @default(false)
+  consentNote    String?
+  status         PublishStatus @default(DRAFT)
+  sortOrder      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("testimonials")
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique // "contact.phone", "office.dhaka.address", "upload.maxBytes"
+  value       String
+  isPublic    Boolean  @default(false)
+  description String?
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
+}

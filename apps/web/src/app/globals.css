@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+
+/* Design tokens: calm healthcare palette, system fonts (no font downloads), generous whitespace. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Bengali', sans-serif;
+
+  --color-brand-50: #eefafb;
+  --color-brand-100: #d5f1f4;
+  --color-brand-200: #afe2e9;
+  --color-brand-300: #7accd8;
+  --color-brand-400: #3fb0c2;
+  --color-brand-500: #1f93a8;
+  --color-brand-600: #16778c;
+  --color-brand-700: #145f71;
+  --color-brand-800: #154e5d;
+  --color-brand-900: #14424f;
+
+  --color-ink-50: #f6f8fa;
+  --color-ink-100: #eceff3;
+  --color-ink-200: #dde2e9;
+  --color-ink-300: #c3cbd6;
+  --color-ink-400: #94a0b0;
+  --color-ink-500: #556071;
+  --color-ink-600: #465162;
+  --color-ink-700: #3c4655;
+  --color-ink-800: #262e3b;
+  --color-ink-900: #141a24;
+
+  --shadow-card: 0 1px 2px rgb(20 26 36 / 0.05), 0 1px 3px rgb(20 26 36 / 0.06);
+  --shadow-pop: 0 8px 24px rgb(20 26 36 / 0.12);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-white text-ink-800 font-sans antialiased;
+  }
+  h1, h2, h3, h4 {
+    @apply text-ink-900 tracking-tight;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+  a {
+    @apply text-brand-700;
+  }
+  /* Links inside running text must not rely on colour alone (WCAG 1.4.1). */
+  p a,
+  dd a,
+  summary a {
+    @apply underline underline-offset-2;
+  }
+  ::selection {
+    @apply bg-brand-200;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
