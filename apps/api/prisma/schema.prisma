@@ -5,7 +5,8 @@
 // (AES-256-GCM, key from KMS/env) in the *Enc columns — never plaintext.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"] // rhel target = Vercel/AWS Lambda runtime
 }
 
 datasource db {

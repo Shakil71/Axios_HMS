@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "cd ../.. && npm ci -w @hms/api --include-workspace-root=false",
+  "buildCommand": "npx prisma generate && npm run build",
+  "outputDirectory": "public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "functions": { "api/index.js": { "maxDuration": 30, "includeFiles": "{dist,prisma}/**" } }
+}

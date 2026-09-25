@@ -1,0 +1,33 @@
+import 'reflect-metadata';
+import type { IncomingMessage, ServerResponse } from 'http';
+
+type Handler = (req: IncomingMessage, res: ServerResponse) => void;
+let ready: Promise<Handler> | undefined;
+
+/** Builds the Nest app once per warm serverless instance and returns its Express handler. */
+async function bootstrap(): Promise<Handler> {
+  // Loaded lazily so a configuration error (missing env var) is caught and reported instead of crashing the module load.
+  const { NestFactory } = await import('@nestjs/core');
+  const { Logger } = await import('nestjs-pino');
+  const { AppModule } = await import('./app.module');
+  const { configureApp } = await import('./app.setup');
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
+  configureApp(app);
+  await app.init();
+  return app.getHttpAdapter().getInstance() as Handler;
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  try {
+    ready ??= bootstrap();
+    (await ready)(req, res);
+  } catch (e) {
+    ready = undefined; // retry on the next request
+    // Env validation messages list variable names only, never values.
+    console.error('API failed to start:', e instanceof Error ? e.message : 'unknown error');
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ success: false, error: { code: 'NOT_CONFIGURED', message: 'The service is not configured correctly. Please try again later.' } }));
+  }
+}
