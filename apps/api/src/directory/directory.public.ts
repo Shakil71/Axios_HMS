@@ -43,7 +43,7 @@ const hospitalCard = {
 } satisfies Prisma.HospitalSelect;
 
 const doctorCard = {
-  id: true, slug: true, fullName: true, title: true, designation: true, photoKey: true, yearsOfExperience: true, isFeatured: true,
+  id: true, slug: true, fullName: true, title: true, designation: true, photoKey: true, yearsOfExperience: true, isFeatured: true, isDemo: true,
   specialties: { select: { isPrimary: true, isSubSpecialty: true, specialty: refName } },
   hospitals: { where: { hospital: published }, select: { isPrimary: true, designation: true, hospital: { select: { id: true, slug: true, name: true, country: refName, city: refName } } } },
   languages: { select: { language: { select: { code: true, name: true } } } },
@@ -150,7 +150,7 @@ export class DirectoryPublicController {
         gallery: { select: { id: true, imageKey: true, altText: true }, orderBy: { sortOrder: 'asc' } },
         languages: { select: { language: { select: { code: true, name: true } } } },
         treatments: { where: { treatment: published }, select: { treatment: { select: { id: true, slug: true, name: true } } } },
-        doctors: { where: { doctor: publicDoctor }, select: { isPrimary: true, designation: true, doctor: { select: { id: true, slug: true, fullName: true, title: true, designation: true, photoKey: true, yearsOfExperience: true, specialties: { select: { isPrimary: true, specialty: refName } } } } } },
+        doctors: { where: { doctor: publicDoctor }, select: { isPrimary: true, designation: true, doctor: { select: { id: true, slug: true, fullName: true, title: true, designation: true, photoKey: true, yearsOfExperience: true, isDemo: true, specialties: { select: { isPrimary: true, specialty: refName } } } } } },
       },
     });
     if (!h) throw notFound('We could not find this hospital.');
@@ -194,6 +194,7 @@ export class DirectoryPublicController {
         qualifications: { select: { id: true, kind: true, title: true, institution: true, year: true, url: true }, orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }] },
         treatments: { where: { treatment: published }, select: { treatment: { select: { id: true, slug: true, name: true } } } },
         appointmentTypes: { select: { type: true } },
+        availability: { select: { id: true, dayOfWeek: true, startTime: true, endTime: true, timezone: true, method: true, notes: true }, orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }] },
       },
     });
     if (!d) throw notFound('We could not find this doctor.');

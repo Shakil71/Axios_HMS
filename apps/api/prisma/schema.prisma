@@ -724,6 +724,8 @@ model Doctor {
   verifiedAt        DateTime?
   verifiedById      String?       @db.Uuid
   isFeatured        Boolean       @default(false)
+  // Fictional demonstration profile: always shown with a visible "Sample profile" label.
+  isDemo            Boolean       @default(false)
   status            PublishStatus @default(DRAFT)
   metaTitle         String?
   metaDescription   String?
@@ -739,6 +741,7 @@ model Doctor {
   languages        DoctorLanguage[]
   treatments       DoctorTreatment[]
   appointmentTypes DoctorAppointmentType[]
+  availability     DoctorAvailability[]
   appointments     Appointment[]
   selectedByCases  MedicalCase[]           @relation("CaseSelectedDoctor")
 
@@ -802,6 +805,25 @@ model DoctorLanguage {
 
   @@id([doctorId, languageId])
   @@map("doctor_languages")
+}
+
+// Weekly consultation hours (local time of the doctor's hospital, IANA timezone).
+model DoctorAvailability {
+  id        String             @id @default(uuid()) @db.Uuid
+  doctorId  String             @db.Uuid
+  dayOfWeek Int // 0 = Sunday ... 6 = Saturday
+  startTime String             @db.VarChar(5) // "HH:MM" 24h
+  endTime   String             @db.VarChar(5)
+  timezone  String // e.g. "Asia/Kolkata"
+  method    ConsultationMethod
+  notes     String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, dayOfWeek])
+  @@map("doctor_availability")
 }
 
 model DoctorAppointmentType {

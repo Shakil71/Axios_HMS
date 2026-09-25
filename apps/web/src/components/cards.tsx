@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { flagEmoji } from '@/lib/labels';
 import type { Country, DoctorCard, HospitalCard, TreatmentCard } from '@/lib/types';
-import { Avatar, Badge, Card } from './ui';
+import { Avatar, Badge, Card, DoctorPhoto } from './ui';
 
 export function CountryCardView({ c }: { c: Country }) {
   return (
@@ -48,8 +48,9 @@ export function DoctorCardView({ d }: { d: DoctorCard }) {
   return (
     <Card className="relative flex h-full flex-col transition-shadow hover:shadow-pop">
       <div className="flex items-start gap-3">
-        <Avatar name={d.fullName} />
+        <DoctorPhoto name={d.fullName} photoKey={d.photoKey} size={72} />
         <div className="min-w-0">
+          {d.isDemo && <span className="mb-1 inline-block"><Badge tone="warning">Sample profile</Badge></span>}
           <h3 className="text-lg font-semibold leading-snug"><Link href={`/doctors/${d.slug}`} className="text-ink-900 after:absolute after:inset-0">{[d.title, d.fullName].filter(Boolean).join(' ')}</Link></h3>
           {primary && <p className="text-sm font-medium text-brand-800">{primary.specialty.name}</p>}
           {d.designation && <p className="text-sm text-ink-600">{d.designation}</p>}

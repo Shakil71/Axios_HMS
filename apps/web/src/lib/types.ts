@@ -26,7 +26,7 @@ export interface HospitalDetail extends HospitalCard {
 }
 export interface DoctorCard {
   id: string; slug: string; fullName: string; title: string | null; designation: string | null; photoKey: string | null;
-  yearsOfExperience: number | null; isFeatured: boolean;
+  yearsOfExperience: number | null; isFeatured: boolean; isDemo: boolean;
   specialties: { isPrimary: boolean; isSubSpecialty: boolean; specialty: Ref }[];
   hospitals: { isPrimary: boolean; designation: string | null; hospital: Ref & { country: Ref; city: Ref | null } }[];
   languages: { language: { code: string; name: string } }[];
@@ -35,6 +35,7 @@ export interface DoctorDetail extends DoctorCard {
   bio: string | null; consultationInfo: string | null; metaTitle: string | null; metaDescription: string | null;
   qualifications: { id: string; kind: string; title: string; institution: string | null; year: number | null; url: string | null }[];
   treatments: { treatment: Ref }[]; appointmentTypes: { type: string }[];
+  availability: import('./schedule').Slot[];
 }
 export interface TreatmentCard { id: string; slug: string; name: string; summary: string | null; category: Ref }
 export interface TreatmentDetail extends TreatmentCard {

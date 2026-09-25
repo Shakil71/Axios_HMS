@@ -100,6 +100,38 @@ describe('directory (public read + admin write)', () => {
     expect(await t.prisma.auditLog.count({ where: { action: 'directory.doctor.verify' } })).toBe(2);
   });
 
+  it('stores weekly consultation hours, validates them, and shows them ordered on the public profile', async () => {
+    const c = await seedCatalog();
+    const bad = await seedDoctor(c, { fullName: 'Dr. Bad Hours', availability: [{ dayOfWeek: 1, startTime: '14:00', endTime: '09:00', timezone: 'Asia/Kolkata', method: 'VIDEO' }] });
+    expect(bad.status).toBe(422);
+    expect((await seedDoctor(c, { fullName: 'Dr. Bad Day', availability: [{ dayOfWeek: 9, startTime: '09:00', endTime: '10:00', timezone: 'Asia/Kolkata', method: 'VIDEO' }] })).status).toBe(422);
+    expect((await seedDoctor(c, { fullName: 'Dr. Bad Time', availability: [{ dayOfWeek: 1, startTime: '9am', endTime: '10:00', timezone: 'Asia/Kolkata', method: 'VIDEO' }] })).status).toBe(422);
+
+    const d = (await seedDoctor(c, {
+      fullName: 'Dr. Schedule Person',
+      availability: [
+        { dayOfWeek: 3, startTime: '15:00', endTime: '17:00', timezone: 'Asia/Kolkata', method: 'IN_PERSON' },
+        { dayOfWeek: 1, startTime: '10:00', endTime: '13:00', timezone: 'Asia/Kolkata', method: 'VIDEO', notes: 'Bangla spoken' },
+      ],
+    })).body.data;
+    await post(`/admin/directory/doctors/${d.id}/verify`, admin, { verified: true });
+    await patch(`/admin/directory/doctors/${d.id}`, admin, { status: 'PUBLISHED' });
+
+    const pub = (await get(`/doctors/${d.slug}`)).body.data;
+    expect(pub.availability.map((a: { dayOfWeek: number }) => a.dayOfWeek)).toEqual([1, 3]);
+    expect(pub.availability[0]).toMatchObject({ startTime: '10:00', endTime: '13:00', timezone: 'Asia/Kolkata', method: 'VIDEO', notes: 'Bangla spoken' });
+    expect(pub.isDemo).toBe(false); // sample flag is never settable through the admin API
+
+    // replacing the schedule replaces it entirely; omitting it leaves it alone
+    await patch(`/admin/directory/doctors/${d.id}`, admin, { availability: [{ dayOfWeek: 5, startTime: '08:00', endTime: '09:00', timezone: 'Asia/Kolkata', method: 'PHONE' }] });
+    expect((await get(`/doctors/${d.slug}`)).body.data.availability).toHaveLength(1);
+    await patch(`/admin/directory/doctors/${d.id}`, admin, { bio: 'Updated bio' });
+    expect((await get(`/doctors/${d.slug}`)).body.data.availability).toHaveLength(1);
+    expect((await post(`/admin/directory/doctors`, admin, { fullName: 'Dr. Flag', isDemo: true })).status).toBe(422);
+    // the doctor card (lists) exposes the sample flag so the UI can label demo profiles
+    expect((await get('/doctors')).body.data[0]).toHaveProperty('isDemo', false);
+  });
+
   it('hides drafts and archived records everywhere, including nested lists', async () => {
     const c = await seedCatalog();
     const d = (await seedDoctor(c)).body.data;

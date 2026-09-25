@@ -46,6 +46,14 @@ const doctorSchema = z.object({
   hospitals: z.array(z.object({ hospitalId: uuid, isPrimary: z.boolean().default(false), designation: text(150).nullish() })).max(20).optional(),
   languageIds: z.array(uuid).max(20).optional(), treatmentIds: z.array(uuid).max(200).optional(),
   appointmentTypes: z.array(z.enum(['ONLINE_CONSULTATION', 'HOSPITAL_CONSULTATION', 'FOLLOW_UP', 'DIAGNOSTIC', 'SURGERY', 'SECOND_OPINION'])).max(6).optional(),
+  availability: z.array(z.object({
+    dayOfWeek: z.number().int().min(0).max(6),
+    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24-hour HH:MM.'),
+    endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24-hour HH:MM.'),
+    timezone: z.string().min(3).max(60),
+    method: z.enum(['IN_PERSON', 'VIDEO', 'PHONE']),
+    notes: text(200).nullish(),
+  }).refine((v) => v.startTime < v.endTime, { path: ['endTime'], message: 'End time must be after the start time.' })).max(30).optional(),
   qualifications: z.array(z.object({
     kind: z.enum(['DEGREE', 'CERTIFICATION', 'MEMBERSHIP', 'PUBLICATION', 'AWARD', 'EXPERTISE']),
     title: text(300).min(1), institution: text(200).nullish(), year: z.number().int().min(1900).max(2100).nullish(), url: url.nullish(),
@@ -171,6 +179,7 @@ export class DirectoryAdminService {
     if (dto.languageIds) { await tx.doctorLanguage.deleteMany({ where: { doctorId: id } }); await tx.doctorLanguage.createMany({ data: [...new Set(dto.languageIds)].map((languageId) => ({ doctorId: id, languageId })) }); }
     if (dto.treatmentIds) { await tx.doctorTreatment.deleteMany({ where: { doctorId: id } }); await tx.doctorTreatment.createMany({ data: [...new Set(dto.treatmentIds)].map((treatmentId) => ({ doctorId: id, treatmentId })) }); }
     if (dto.appointmentTypes) { await tx.doctorAppointmentType.deleteMany({ where: { doctorId: id } }); await tx.doctorAppointmentType.createMany({ data: [...new Set(dto.appointmentTypes)].map((type) => ({ doctorId: id, type })) }); }
+    if (dto.availability) { await tx.doctorAvailability.deleteMany({ where: { doctorId: id } }); await tx.doctorAvailability.createMany({ data: dto.availability.map((a) => ({ ...a, doctorId: id })) }); }
     if (dto.qualifications) { await tx.doctorQualification.deleteMany({ where: { doctorId: id } }); await tx.doctorQualification.createMany({ data: dto.qualifications.map((q, i) => ({ ...q, doctorId: id, sortOrder: i })) }); }
   }
 
@@ -185,7 +194,7 @@ export class DirectoryAdminService {
     // A profile is public only after staff verify it against source documents.
     if (dto.status === 'PUBLISHED') throw invalid('status', 'Verify the doctor first, then publish.');
     await this.checkDoctor(dto);
-    const scalars = strip(dto, ['specialties', 'hospitals', 'languageIds', 'treatmentIds', 'appointmentTypes', 'qualifications'] as const);
+    const scalars = strip(dto, ['specialties', 'hospitals', 'languageIds', 'treatmentIds', 'appointmentTypes', 'qualifications', 'availability'] as const);
     return this.prisma.$transaction(async (tx) => {
       const d = await tx.doctor.create({ data: { ...scalars, slug: dto.slug ?? slugify(dto.fullName) } });
       await this.doctorRelations(tx, d.id, dto);
@@ -199,7 +208,7 @@ export class DirectoryAdminService {
     if (!before) throw notFound();
     if (dto.status === 'PUBLISHED' && !before.isVerified) throw invalid('status', 'Verify the doctor first, then publish.');
     await this.checkDoctor(dto);
-    const scalars = strip(dto, ['specialties', 'hospitals', 'languageIds', 'treatmentIds', 'appointmentTypes', 'qualifications'] as const);
+    const scalars = strip(dto, ['specialties', 'hospitals', 'languageIds', 'treatmentIds', 'appointmentTypes', 'qualifications', 'availability'] as const);
     return this.prisma.$transaction(async (tx) => {
       const d = await tx.doctor.update({ where: { id }, data: scalars });
       await this.doctorRelations(tx, id, dto);
@@ -311,7 +320,7 @@ export class DirectoryAdminService {
     const include: Record<typeof entity, unknown> = {
       country: { visaRequirements: true },
       hospital: { departments: true, facilities: true, accreditations: true, specialties: true, languages: true, treatments: true },
-      doctor: { qualifications: true, specialties: true, hospitals: true, languages: true, treatments: true, appointmentTypes: true },
+      doctor: { qualifications: true, specialties: true, hospitals: true, languages: true, treatments: true, appointmentTypes: true, availability: true },
       treatment: { specialties: true, related: true },
     };
     const delegate = this.prisma[entity] as unknown as { findFirst(a: unknown): Promise<unknown> };

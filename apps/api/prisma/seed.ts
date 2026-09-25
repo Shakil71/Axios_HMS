@@ -136,24 +136,83 @@ async function seedDemo() {
     hospitals[cn] = h.id;
   }
 
-  const doctorDefs: [string, string, string][] = [
-    [`${DEMO} Cardiologist A (sample profile)`, 'Cardiology', 'India'],
-    [`${DEMO} Orthopedic Surgeon B (sample profile)`, 'Orthopedics', 'Thailand'],
-    [`${DEMO} Cardiologist C (sample profile)`, 'Cardiology', 'Singapore'],
-    [`${DEMO} Neurosurgeon D (sample profile)`, 'Neurosurgery', 'Malaysia'],
+  // ── Sample doctors: FICTIONAL profiles for demonstration (flagged isDemo → "Sample profile" label in the UI). ──
+  // Photos are generic stock portraits (see apps/web/public/images/doctors/CREDITS.md), not real doctors.
+  type Slot = [days: number[], start: string, end: string, method: 'VIDEO' | 'IN_PERSON' | 'PHONE'];
+  const doctorDefs: {
+    name: string; designation: string; country: string; tz: string; years: number; languages: string[]; specialty: string; sub?: string;
+    treatments: string[]; expertise: string[]; bio: string; slots: Slot[];
+  }[] = [
+    {
+      name: 'Rohan Iyer', designation: 'Consultant Interventional Cardiologist', country: 'India', tz: 'Asia/Kolkata', years: 18, languages: ['en', 'hi'],
+      specialty: 'Cardiology', treatments: ['Coronary Artery Bypass (CABG)', 'Angioplasty & Stenting'],
+      expertise: ['Coronary artery disease', 'Heart failure follow-up', 'Second opinions before heart surgery'],
+      bio: 'Interventional cardiologist who reviews reports before treatment is planned and explains the options in plain language.',
+      slots: [[[1, 3, 5], '10:00', '13:00', 'VIDEO'], [[2, 4], '15:00', '17:00', 'IN_PERSON']],
+    },
+    {
+      name: 'Ananya Sen', designation: 'Consultant in Reproductive Medicine', country: 'India', tz: 'Asia/Kolkata', years: 14, languages: ['en', 'hi', 'bn'],
+      specialty: 'Reproductive Medicine', treatments: ['IVF Consultation'],
+      expertise: ['Fertility assessment', 'Assisted reproduction planning', 'Bangla-speaking consultations'],
+      bio: 'Fertility specialist who speaks Bangla and English and helps couples understand each stage of assessment before they travel.',
+      slots: [[[1, 2, 3, 4], '11:00', '14:00', 'VIDEO'], [[6], '10:00', '12:00', 'IN_PERSON']],
+    },
+    {
+      name: 'Farid Rahman', designation: 'Consultant Neurosurgeon', country: 'Malaysia', tz: 'Asia/Kuala_Lumpur', years: 21, languages: ['en', 'bn'],
+      specialty: 'Neurosurgery', treatments: ['Spine Surgery'],
+      expertise: ['Spine conditions', 'Brain and nerve surgery consultations', 'Review of MRI and CT reports'],
+      bio: 'Neurosurgeon who reviews scans remotely and advises whether travel for surgery is needed, with Bangla and English consultations.',
+      slots: [[[0, 2, 4], '09:00', '12:00', 'VIDEO'], [[3], '14:00', '17:00', 'IN_PERSON']],
+    },
+    {
+      name: 'Daniel Weber', designation: 'Senior Consultant Orthopedic Surgeon', country: 'Singapore', tz: 'Asia/Singapore', years: 16, languages: ['en'],
+      specialty: 'Orthopedics', treatments: ['Knee Replacement'],
+      expertise: ['Joint replacement', 'Sports injuries', 'Rehabilitation planning'],
+      bio: 'Orthopedic surgeon focused on joint replacement and recovery planning, including what rehabilitation to expect after returning home.',
+      slots: [[[1, 2, 3, 4, 5], '09:30', '12:30', 'IN_PERSON'], [[6], '10:00', '12:00', 'VIDEO']],
+    },
+    {
+      name: 'Marcus Lindqvist', designation: 'Consultant Medical Oncologist', country: 'Thailand', tz: 'Asia/Bangkok', years: 19, languages: ['en', 'th'],
+      specialty: 'Oncology', treatments: ['Cancer Treatment Planning'],
+      expertise: ['Treatment planning', 'Second opinions', 'Coordination with the patient’s home doctor'],
+      bio: 'Medical oncologist who provides second opinions and treatment planning, and works with your doctor at home on follow-up care.',
+      slots: [[[2, 4], '13:00', '16:00', 'VIDEO'], [[5], '09:00', '11:00', 'IN_PERSON']],
+    },
+    {
+      name: 'Leyla Demir', designation: 'Consultant Nephrologist', country: 'Turkey', tz: 'Europe/Istanbul', years: 15, languages: ['en', 'tr', 'ar'],
+      specialty: 'Nephrology', sub: 'Transplant Surgery', treatments: ['Kidney Transplant Evaluation'],
+      expertise: ['Kidney disease', 'Transplant evaluation', 'Long-term kidney care'],
+      bio: 'Nephrologist who guides patients and families through transplant evaluation and explains what preparation and follow-up involve.',
+      slots: [[[1, 3], '10:00', '13:00', 'VIDEO'], [[4], '14:00', '16:00', 'IN_PERSON']],
+    },
   ];
-  for (const [i, [fullName, spec, country]] of doctorDefs.entries()) {
-    const slug = slugify(fullName);
-    await prisma.doctor.upsert({
-      where: { slug }, update: {},
-      create: {
-        slug, fullName, designation: 'Consultant (demo)', bio: `${DEMO} profile for demonstration only. Not a real person; no real qualifications are implied.`,
-        yearsOfExperience: 10 + i * 3, consultationInfo: sample, status: 'PUBLISHED', isVerified: true, verifiedAt: new Date(), verifiedById: admin.id, isFeatured: i < 3,
-        specialties: { create: [{ specialtyId: specialties[spec], isPrimary: true }] },
-        hospitals: { create: [{ hospitalId: hospitals[country], isPrimary: true }] },
-        languages: { create: [{ languageId: lang('en') }] },
-        appointmentTypes: { create: [{ type: 'ONLINE_CONSULTATION' }, { type: 'HOSPITAL_CONSULTATION' }] },
-        qualifications: { create: [{ kind: 'DEGREE', title: `${DEMO} qualification — not a real credential`, sortOrder: 0 }] },
+
+  const doctorSlug = (n: string) => `dr-${slugify(n)}`;
+  // Replace the earlier placeholder doctors and refresh these on every seed run.
+  await prisma.doctor.deleteMany({
+    where: { OR: [{ slug: { in: doctorDefs.map((d) => doctorSlug(d.name)) } }, { slug: { startsWith: 'demo-', endsWith: '-sample-profile' } }] },
+  });
+  for (const d of doctorDefs) {
+    const slug = doctorSlug(d.name);
+    await prisma.doctor.create({
+      data: {
+        slug, fullName: d.name, title: 'Dr.', designation: `${d.designation} (sample)`, photoKey: `/images/doctors/${slug}.jpg`,
+        bio: `${d.bio} SAMPLE PROFILE: this is a fictional profile for demonstration and does not describe a real doctor.`,
+        yearsOfExperience: d.years, consultationInfo: 'Sample consultation information. Real fees and available slots are confirmed by your coordinator.',
+        status: 'PUBLISHED', isVerified: true, isDemo: true, verifiedAt: new Date(), verifiedById: admin.id, isFeatured: true,
+        specialties: { create: [{ specialtyId: specialties[d.specialty], isPrimary: true }, ...(d.sub ? [{ specialtyId: specialties[d.sub], isSubSpecialty: true }] : [])] },
+        hospitals: { create: [{ hospitalId: hospitals[d.country], isPrimary: true }] },
+        languages: { create: d.languages.map((c) => ({ languageId: lang(c) })) },
+        treatments: { create: d.treatments.map((t) => ({ treatmentId: treatments[t] })) },
+        appointmentTypes: { create: [{ type: 'ONLINE_CONSULTATION' }, { type: 'HOSPITAL_CONSULTATION' }, { type: 'SECOND_OPINION' }] },
+        availability: { create: d.slots.flatMap(([days, start, end, method]) => days.map((dayOfWeek) => ({ dayOfWeek, startTime: start, endTime: end, timezone: d.tz, method }))) },
+        qualifications: {
+          create: [
+            { kind: 'DEGREE', title: 'Doctor of Medicine (sample entry)', institution: 'Sample University of Medicine', sortOrder: 0 },
+            { kind: 'CERTIFICATION', title: `Board certification in ${d.specialty} (sample entry)`, sortOrder: 1 },
+            ...d.expertise.map((title, i) => ({ kind: 'EXPERTISE' as const, title, sortOrder: 10 + i })),
+          ],
+        },
       },
     });
   }

@@ -27,9 +27,11 @@ test.describe('public site', () => {
     await page.getByRole('button', { name: 'Show results' }).click();
     await expect(page).toHaveURL(/specialty=cardiology/);
     const cards = page.getByRole('heading', { level: 3 });
-    await expect(cards.first()).toContainText('DEMO');
+    await expect(cards.first()).toContainText('Dr.');
+    await expect(page.getByText('Sample profile').first()).toBeVisible();
     await cards.first().getByRole('link').click();
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('DEMO Cardiologist');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Dr.');
+    await expect(page.getByText('This is a sample profile')).toBeVisible();
     const a11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(a11y.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
   });
@@ -157,6 +159,16 @@ test.describe('mobile', () => {
     await page.getByRole('link', { name: 'Documents' }).last().click();
     await page.waitForURL('**/patient/documents');
     await expect(page.getByRole('button', { name: 'Take a photo', exact: true })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test('sample doctor profile is labelled, shows consultation hours, and fits a phone screen', async ({ page }) => {
+    await page.goto('/doctors/dr-ananya-sen');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Ananya Sen');
+    await expect(page.getByText('This is a sample profile')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Consultation hours' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Bangladesh time' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
   });

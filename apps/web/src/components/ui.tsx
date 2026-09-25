@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { ComponentProps, ReactNode } from 'react';
 import type { Tone } from '@/lib/labels';
@@ -89,6 +90,17 @@ export function Avatar({ name, size = 56 }: { name: string; size?: number }) {
       {ini}
     </span>
   );
+}
+
+/** Doctor portrait. Local paths (sample photos) use next/image; anything else falls back to initials until media storage is wired up. */
+export function DoctorPhoto({ name, photoKey, size = 64, rounded = 'full' }: { name: string; photoKey?: string | null; size?: number; rounded?: 'full' | 'xl' }) {
+  const radius = rounded === 'full' ? 'rounded-full' : 'rounded-2xl';
+  if (photoKey?.startsWith('/')) {
+    return (
+      <Image src={photoKey} alt="" width={size} height={Math.round(size * (rounded === 'full' ? 1 : 1.25))} sizes={`${size}px`} className={cx('shrink-0 bg-ink-100 object-cover object-top', radius)} style={{ width: size, height: rounded === 'full' ? size : Math.round(size * 1.25) }} />
+    );
+  }
+  return <Avatar name={name} size={size} />;
 }
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
