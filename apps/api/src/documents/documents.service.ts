@@ -9,6 +9,7 @@ import { Paginated, pageParams } from '../common/http/response';
 import { PrismaService } from '../common/prisma.service';
 import { getEnv } from '../config/env';
 import { TimelineService } from '../cases/timeline.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Storage } from '../storage/storage.service';
 import { AuthUser, can, primaryRole } from '../rbac/auth-user';
 import { DocAction, SENSITIVITIES, docPerm } from '../rbac/permissions';
@@ -18,9 +19,13 @@ import {
 } from './documents.constants';
 import { completeSchema, downloadSchema, listDocumentsQuery, requestUploadSchema, requestVersionSchema, verifySchema } from './documents.schemas';
 
-type DocWithVersion = Document & { versions: DocumentVersion[] };
+type DocWithVersion = Document & { versions: DocumentVersion[]; patient: { id: string; user: { fullName: string } }; case: { caseNumber: string } | null };
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const currentVersionInclude = { versions: { where: { completedAt: { not: null } }, orderBy: { versionNo: 'desc' as const }, take: 1 } };
+const currentVersionInclude = {
+  versions: { where: { completedAt: { not: null } }, orderBy: { versionNo: 'desc' as const }, take: 1 },
+  patient: { select: { id: true, user: { select: { fullName: true } } } },
+  case: { select: { caseNumber: true } },
+};
 const completedOnly: Prisma.DocumentWhereInput = { versions: { some: { completedAt: { not: null } } } };
 
 /**
@@ -36,6 +41,7 @@ export class DocumentsService {
     private readonly audit: AuditService,
     private readonly storage: Storage,
     private readonly timeline: TimelineService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ───────────── authorization ─────────────
@@ -71,7 +77,7 @@ export class DocumentsService {
 
   // ───────────── presentation ─────────────
 
-  private dto(d: DocWithVersion) {
+  private dto(d: DocWithVersion, staff = false) {
     const v = d.versions[0];
     const expired = d.expiresAt && d.expiresAt < new Date() && d.status !== 'REJECTED';
     const status = expired ? 'EXPIRED' : d.status;
@@ -91,6 +97,7 @@ export class DocumentsService {
       file: v ? { fileName: v.originalFileName, mimeType: v.mimeType, sizeBytes: Number(v.sizeBytes), uploadedAt: v.createdAt, scanStatus: v.scanStatus } : null,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
+      ...(staff ? { patient: { id: d.patient.id, fullName: d.patient.user.fullName }, caseNumber: d.case?.caseNumber ?? null } : {}),
     };
   }
 
@@ -197,6 +204,7 @@ export class DocumentsService {
       });
       if (d.caseId) {
         await this.timeline.record({ caseId: d.caseId, type: 'DOCUMENT_UPLOADED', title: `${cap(CATEGORY_LABELS[d.category])} uploaded`, actorId: user.id }, tx);
+        await this.notifications.notifyTeamOfCase(d.caseId, 'DOCUMENT_UPLOADED', `${cap(CATEGORY_LABELS[d.category])} uploaded`, 'Waiting for review', user.id, tx);
       }
       await tx.documentAccessLog.create({ data: { documentId, versionNo: version.versionNo, userId: user.id, action: version.versionNo > 1 ? 'REPLACE' : 'UPLOAD', ip: ctx.ip, userAgent: ctx.userAgent } });
       await this.audit.log({ actorId: user.id, actorRole: primaryRole(user), action: 'document.upload', resourceType: 'Document', resourceId: documentId, metadata: { category: d.category, versionNo: version.versionNo, sizeBytes: bytes.length }, ...ctx }, tx);
@@ -209,13 +217,35 @@ export class DocumentsService {
 
   async get(user: AuthUser, id: string, ctx: ReqCtx) {
     const doc = await this.authorize(user, id, 'view', ctx);
-    return this.dto(doc);
+    return this.dto(doc, this.scope.isStaff(user));
   }
 
   async versions(user: AuthUser, id: string, ctx: ReqCtx) {
     await this.authorize(user, id, 'view', ctx);
     const rows = await this.prisma.documentVersion.findMany({ where: { documentId: id, completedAt: { not: null } }, orderBy: { versionNo: 'desc' } });
     return rows.map((v) => ({ versionNo: v.versionNo, fileName: v.originalFileName, mimeType: v.mimeType, sizeBytes: Number(v.sizeBytes), uploadedAt: v.createdAt, scanStatus: v.scanStatus }));
+  }
+
+  /** Staff reach + per-sensitivity permission for `action`; null when the caller may not use this action at all. */
+  private staffAccess(user: AuthUser, action: DocAction): Prisma.DocumentWhereInput | null {
+    const allowed = SENSITIVITIES.filter((s) => can(user, docPerm(action, s))).map((s) => s.toUpperCase() as DocumentSensitivity);
+    if (!allowed.length) return null;
+    const reach: Prisma.DocumentWhereInput = can(user, 'documents.scope.all')
+      ? {}
+      : { OR: [{ caseId: { not: null }, case: { is: { deletedAt: null, ...this.scope.assignedWhere(user) } } }, { caseId: null, patient: { cases: { some: { deletedAt: null, ...this.scope.assignedWhere(user) } } } }] };
+    return { AND: [{ sensitivity: { in: allowed } }, reach] };
+  }
+
+  /** Documents waiting for this staff member to verify (only categories they may verify, only cases they can reach). */
+  async reviewQueue(user: AuthUser, take = 6) {
+    const access = this.staffAccess(user, 'verify');
+    if (!access) return { total: 0, items: [] as ReturnType<DocumentsService['dto']>[] };
+    const where: Prisma.DocumentWhereInput = { AND: [{ deletedAt: null }, completedOnly, access, { status: { in: ['UPLOADED', 'UNDER_REVIEW'] } }] };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.document.findMany({ where, take, orderBy: { createdAt: 'asc' }, include: currentVersionInclude }),
+      this.prisma.document.count({ where }),
+    ]);
+    return { total, items: rows.map((r) => this.dto(r, true)) };
   }
 
   async list(user: AuthUser, q: z.infer<typeof listDocumentsQuery>) {
@@ -232,19 +262,17 @@ export class DocumentsService {
       if (!user.patientProfileId) throw forbidden();
       access = { patientId: user.patientProfileId };
     } else {
-      const allowed = SENSITIVITIES.filter((s) => can(user, docPerm('view', s))).map((s) => s.toUpperCase() as DocumentSensitivity);
-      if (!allowed.length) throw forbidden();
-      const reach: Prisma.DocumentWhereInput = can(user, 'documents.scope.all')
-        ? {}
-        : { OR: [{ caseId: { not: null }, case: { is: { deletedAt: null, ...this.scope.assignedWhere(user) } } }, { caseId: null, patient: { cases: { some: { deletedAt: null, ...this.scope.assignedWhere(user) } } } }] };
-      access = { AND: [{ sensitivity: { in: allowed } }, reach, q.patientId ? { patientId: q.patientId } : {}] };
+      const staffAccess = this.staffAccess(user, 'view');
+      if (!staffAccess) throw forbidden();
+      access = { AND: [staffAccess, q.patientId ? { patientId: q.patientId } : {}] };
     }
     const where: Prisma.DocumentWhereInput = { AND: [{ deletedAt: null }, completedOnly, access, filters] };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.document.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, include: currentVersionInclude }),
       this.prisma.document.count({ where }),
     ]);
-    return new Paginated(rows.map((r) => this.dto(r)), { page, pageSize, total });
+    const staff = this.scope.isStaff(user);
+    return new Paginated(rows.map((r) => this.dto(r, staff)), { page, pageSize, total });
   }
 
   /** Issues a 120-second signed URL after authorization; never returns bytes or a stable link. */
@@ -283,11 +311,13 @@ export class DocumentsService {
       });
       if (d.caseId && dto.decision === 'VERIFIED') await this.timeline.record({ caseId: d.caseId, type: 'DOCUMENT_VERIFIED', title: `${cap(label)} verified`, actorId: user.id }, tx);
       if (d.caseId && dto.decision === 'REJECTED') await this.timeline.record({ caseId: d.caseId, type: 'DOCUMENT_REJECTED', title: `Please upload a new ${label}`, description: dto.reason, actorId: user.id }, tx);
+      if (d.caseId && dto.decision === 'VERIFIED') await this.notifications.notifyPatientOfCase(d.caseId, 'DOCUMENT_VERIFIED', `${cap(label)} verified`, undefined, tx);
+      if (d.caseId && dto.decision === 'REJECTED') await this.notifications.notifyPatientOfCase(d.caseId, 'DOCUMENT_REJECTED', `Please upload a new ${label}`, dto.reason, tx);
       await tx.documentAccessLog.create({ data: { documentId: id, userId: user.id, action: dto.decision === 'REJECTED' ? 'REJECT' : 'VERIFY', ip: ctx.ip, userAgent: ctx.userAgent } });
       await this.audit.log({ actorId: user.id, actorRole: primaryRole(user), action: 'document.verify', resourceType: 'Document', resourceId: id, before: { status: doc.status }, after: { status: dto.decision }, ...ctx }, tx);
       return d;
     });
-    return this.dto(updated);
+    return this.dto(updated, true);
   }
 
   async remove(user: AuthUser, id: string, ctx: ReqCtx) {

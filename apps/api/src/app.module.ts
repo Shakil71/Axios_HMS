@@ -4,6 +4,8 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { clientIp } from './common/http/client-ip';
 import { randomUUID } from 'crypto';
 import { LoggerModule } from 'nestjs-pino';
+import { AdminModule } from './admin/admin.service';
+import { AppointmentsModule } from './appointments/appointments.service';
 import { AuditModule } from './audit/audit.service';
 import { AuthModule } from './auth/auth.controller';
 import { CryptoModule } from './common/crypto/crypto.service';
@@ -11,13 +13,19 @@ import { PrismaModule } from './common/prisma.service';
 import { getEnv } from './config/env';
 import { HealthModule } from './health/health.controller';
 import { MailModule } from './mail/mail.service';
+import { NotificationsModule } from './notifications/notifications.service';
+import { DemoModule } from './demo/demo.module';
 import { CasesModule } from './cases/cases.controller';
 import { DocumentsModule } from './documents/documents.controller';
 import { DirectoryAdminModule } from './directory/directory.admin';
 import { DirectoryPublicModule } from './directory/directory.public';
+import { PaymentsModule } from './payments/payments.service';
 import { PatientsModule } from './patients/patients.controller';
 import { AuthGuard, PermissionsGuard } from './rbac/guards';
 import { StorageModule } from './storage/storage.service';
+import { TravelModule } from './travel/travel.service';
+import { VisaModule } from './visa/visa.service';
+import { WorkspaceModule } from './workspace/workspace.service';
 import { RbacModule } from './rbac/scope.service';
 
 class ClientIpThrottlerGuard extends ThrottlerGuard {
@@ -51,12 +59,20 @@ class ClientIpThrottlerGuard extends ThrottlerGuard {
     MailModule,
     HealthModule,
     StorageModule,
+    NotificationsModule,
     AuthModule,
     DirectoryPublicModule,
     DirectoryAdminModule,
     PatientsModule,
     CasesModule,
     DocumentsModule,
+    AppointmentsModule,
+    VisaModule,
+    TravelModule,
+    PaymentsModule,
+    AdminModule,
+    WorkspaceModule,
+    DemoModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ClientIpThrottlerGuard },

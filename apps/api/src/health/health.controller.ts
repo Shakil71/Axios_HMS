@@ -1,6 +1,8 @@
 import { Controller, Get, Module, ServiceUnavailableException } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../common/prisma.service';
+import { isDemo } from '../config/env';
+import { DEMO_ACCOUNTS, DEMO_PASSWORD_DEFAULT } from '../demo/demo';
 import { Public } from '../rbac/auth-user';
 
 @Public()
@@ -11,7 +13,10 @@ export class HealthController {
 
   @Get('live')
   live() {
-    return { status: 'ok' };
+    // In the demo environment the sign-in page shows these accounts. They never exist outside demo mode.
+    return isDemo()
+      ? { status: 'ok', demo: true, demoPassword: process.env.DEMO_PASSWORD ?? DEMO_PASSWORD_DEFAULT, demoAccounts: DEMO_ACCOUNTS.map(({ key, email, fullName, role, label, home }) => ({ key, email, fullName, role, label, home })) }
+      : { status: 'ok', demo: false };
   }
 
   @Get('ready')

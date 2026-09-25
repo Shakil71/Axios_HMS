@@ -12,6 +12,7 @@ import {
   PATIENT_CAN_CANCEL, PATIENT_CAN_EDIT_UNTIL, STATUS_LABELS, TERMINAL,
   assignSchema, changeStatusSchema, createCaseSchema, createNoteSchema, listCasesQuery, updateCaseSchema,
 } from './cases.schemas';
+import { NotificationsService } from '../notifications/notifications.service';
 import { TimelineService } from './timeline.service';
 
 const named = { select: { id: true, name: true, slug: true } } as const;
@@ -41,6 +42,7 @@ export class CasesService {
     private readonly scope: ScopeService,
     private readonly audit: AuditService,
     private readonly timeline: TimelineService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ───────────── presentation ─────────────
@@ -151,6 +153,9 @@ export class CasesService {
         scope,
         query.status ? { status: query.status } : {},
         staff && query.priority ? { priority: query.priority } : {},
+        staff && query.patientId ? { patientId: query.patientId } : {},
+        staff && query.assignedTo ? { assignments: { some: { staffId: query.assignedTo, unassignedAt: null } } } : {},
+        staff && query.unassigned ? { assignments: { none: { unassignedAt: null } } } : {},
         query.q
           ? { OR: [{ caseNumber: { contains: query.q, mode: 'insensitive' } }, ...(staff ? [{ patient: { user: { fullName: { contains: query.q, mode: 'insensitive' as const } } } }] : [])] }
           : {},
@@ -214,6 +219,7 @@ export class CasesService {
         include: caseInclude,
       });
       await this.timeline.record({ caseId: id, type: 'STATUS_CHANGED', title: STATUS_LABELS[dto.status], description: dto.message, actorId: user.id, fromStatus: before.status, toStatus: dto.status }, tx);
+      await this.notifications.notifyPatientOfCase(id, 'CASE_STATUS_CHANGED', STATUS_LABELS[dto.status], dto.message, tx);
       await this.audit.log({ actorId: user.id, actorRole: primaryRole(user), action: 'case.status', resourceType: 'MedicalCase', resourceId: id, before: { status: before.status }, after: { status: dto.status }, ...ctx }, tx);
       return c;
     });
@@ -294,6 +300,7 @@ export class CasesService {
     const a = await this.prisma.$transaction(async (tx) => {
       const row = await tx.caseAssignment.create({ data: { caseId: id, staffId: dto.staffId, role: dto.role, assignedById: user.id } });
       await this.timeline.record({ caseId: id, type: 'COORDINATOR_ASSIGNED', title: `A ${ROLE_LABEL[dto.role]} was assigned to your case`, description: staffUser.fullName, actorId: user.id }, tx);
+      await this.notifications.notify({ userId: dto.staffId, type: 'SYSTEM', title: 'A case was assigned to you', body: `You are the ${ROLE_LABEL[dto.role]} for this case.`, entityType: 'MedicalCase', entityId: id }, tx);
       await this.audit.log({ actorId: user.id, actorRole: primaryRole(user), action: 'case.assign', resourceType: 'MedicalCase', resourceId: id, metadata: { staffId: dto.staffId, role: dto.role }, ...ctx }, tx);
       return row;
     });

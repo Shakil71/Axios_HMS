@@ -159,7 +159,7 @@ export class DevStorageController {
   constructor(private readonly storage: Storage) {}
 
   private get mem() {
-    if (!(this.storage instanceof MemoryStorage) || getEnv().NODE_ENV === 'production') throw new NotFoundException();
+    if (!(this.storage instanceof MemoryStorage) || (getEnv().NODE_ENV === 'production' && !getEnv().DEMO_MODE)) throw new NotFoundException();
     return this.storage;
   }
 
@@ -207,14 +207,14 @@ export class DevStorageController {
 
 @Global()
 @Module({
-  controllers: getEnv().STORAGE_DRIVER === 'memory' && getEnv().NODE_ENV !== 'production' ? [DevStorageController] : [],
+  controllers: getEnv().STORAGE_DRIVER === 'memory' && (getEnv().NODE_ENV !== 'production' || getEnv().DEMO_MODE) ? [DevStorageController] : [],
   providers: [
     {
       provide: Storage,
       useFactory: () => {
         const env = getEnv();
         if (env.STORAGE_DRIVER === 'memory') {
-          if (env.NODE_ENV === 'production') throw new Error('STORAGE_DRIVER=memory is not allowed in production');
+          if (env.NODE_ENV === 'production' && !env.DEMO_MODE) throw new Error('STORAGE_DRIVER=memory is not allowed in production');
           return new MemoryStorage();
         }
         return new S3Storage();

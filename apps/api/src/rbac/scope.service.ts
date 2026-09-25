@@ -25,6 +25,7 @@ export class ScopeService {
       OR: [
         { assignments: { some: { staffId: user.id, unassignedAt: null } } },
         { selectedDoctor: { userId: user.id } },
+        { appointments: { some: { doctor: { userId: user.id } } } }, // a doctor sees the cases they have an appointment for
       ],
     };
   }

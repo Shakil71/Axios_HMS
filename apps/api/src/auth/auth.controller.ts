@@ -4,7 +4,7 @@ import type { Request, Response } from 'express';
 import { forbidden } from '../common/http/errors';
 import { Ctx, ReqCtx } from '../common/http/request-context';
 import { ZodPipe } from '../common/http/response';
-import { getEnv, isProd } from '../config/env';
+import { getEnv, isDemo, isProd } from '../config/env';
 import { AuthUser, CurrentUser, Public } from '../rbac/auth-user';
 import { AuthService, Session } from './auth.service';
 import { CaptchaService } from './captcha.service';
@@ -14,7 +14,8 @@ import {
 
 const COOKIE = 'hms_rt';
 const COOKIE_PATH = '/api/v1/auth';
-const STRICT = { default: { limit: 10, ttl: 60_000 } };
+// Demo visitors switch between many accounts from one address, so the limit is looser there.
+const STRICT = { default: { limit: isDemo() ? 60 : 10, ttl: 60_000 } };
 
 function setRefreshCookie(res: Response, s: Session) {
   res.cookie(COOKIE, s.refreshToken, {

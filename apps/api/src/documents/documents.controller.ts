@@ -70,5 +70,5 @@ export class DocumentsController {
   }
 }
 
-@Module({ imports: [CasesModule], controllers: [DocumentsController], providers: [DocumentsService] })
+@Module({ imports: [CasesModule], controllers: [DocumentsController], providers: [DocumentsService], exports: [DocumentsService] })
 export class DocumentsModule {}

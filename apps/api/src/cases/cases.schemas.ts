@@ -57,6 +57,9 @@ export const listCasesQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
   status: caseStatusSchema.optional(),
   priority: prioritySchema.optional(),
+  patientId: z.uuid().optional(),
+  assignedTo: z.uuid().optional(),
+  unassigned: z.enum(['true']).optional(),
   q: z.string().trim().max(100).optional(),
   sort: z.enum(['createdAt', '-createdAt', 'updatedAt', '-updatedAt']).optional(),
 });

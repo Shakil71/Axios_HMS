@@ -8,6 +8,7 @@ const bool = z
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().default(4000),
+  DEMO_MODE: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   APP_URL: z.string().url().default('http://localhost:3000'),
 
   DATABASE_URL: z.string().min(1),
@@ -66,3 +67,4 @@ export function resetEnvForTests() {
 }
 
 export const isProd = () => getEnv().NODE_ENV === 'production';
+export const isDemo = () => getEnv().DEMO_MODE;

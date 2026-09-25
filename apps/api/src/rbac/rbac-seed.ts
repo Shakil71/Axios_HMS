@@ -3,7 +3,7 @@ import { ALL_PERMISSIONS, ROLE_DEFAULTS, ROLE_NAMES } from './permissions';
 
 /**
  * Idempotently syncs the permission catalog and SYSTEM roles.
- * System roles are reset to defaults; custom roles (isSystem = false) are never touched.
+ * System roles get their default permissions on first creation only; custom roles are never touched.
  */
 export async function syncRbac(prisma: PrismaClient) {
   for (const key of ALL_PERMISSIONS) {
@@ -18,11 +18,15 @@ export async function syncRbac(prisma: PrismaClient) {
 
   for (const name of ROLE_NAMES) {
     const def = ROLE_DEFAULTS[name];
+    const existing = await prisma.role.findUnique({ where: { name } });
     const role = await prisma.role.upsert({
       where: { name },
-      update: { description: def.description, isSystem: true },
+      update: { isSystem: true },
       create: { name, description: def.description, isSystem: true },
     });
+    // Defaults are applied when the role is first created, so later customisation by a SUPER_ADMIN survives every deploy.
+    // SUPER_ADMIN is the exception: it always holds the complete catalog, including permissions added in newer releases.
+    if (existing && name !== 'SUPER_ADMIN') continue;
     await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     await prisma.rolePermission.createMany({
       data: def.permissions.map((k) => ({ roleId: role.id, permissionId: idByKey.get(k)! })),
