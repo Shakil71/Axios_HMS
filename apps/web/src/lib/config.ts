@@ -11,4 +11,4 @@ export const SITE_URL = (
 ).replace(/\/$/, '');
 
 /** Brand name shown across the site. Set NEXT_PUBLIC_SITE_NAME to the company's registered name. */
-export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? 'Overseas Medical Care';
+export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? 'Axios Station Medical Care';

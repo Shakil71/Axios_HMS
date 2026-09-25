@@ -4,6 +4,17 @@ import type { Tone } from '@/lib/labels';
 
 const cx = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(' ');
 
+/** Brand mark: a medical cross on the brand colour. */
+export function Logo({ size = 32 }: { size?: number }) {
+  return (
+    <span aria-hidden="true" style={{ width: size, height: size }} className="inline-flex shrink-0 items-center justify-center rounded-lg bg-brand-700 text-white">
+      <svg viewBox="0 0 24 24" width={size * 0.6} height={size * 0.6} fill="currentColor">
+        <path d="M9.5 3h5a1 1 0 0 1 1 1v4.5H20a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-4.5V20a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-4.5H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1h4.5V4a1 1 0 0 1 1-1Z" />
+      </svg>
+    </span>
+  );
+}
+
 // ─── buttons ───
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 const buttonBase =

@@ -38,7 +38,7 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().int().default(587),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
-  MAIL_FROM: z.string().default('Medical Travel <no-reply@localhost>'),
+  MAIL_FROM: z.string().default('Axios Station Medical Care <no-reply@localhost>'),
 
   CAPTCHA_SECRET_KEY: z.string().optional(),
 

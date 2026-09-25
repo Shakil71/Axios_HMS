@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { SITE_NAME } from '@/lib/config';
-import { Container, LinkButton } from './ui';
+import { Container, LinkButton, Logo } from './ui';
 
 const NAV = [
   { href: '/countries', label: 'Countries' },
@@ -17,7 +17,7 @@ export function SiteHeader() {
     <header className="sticky top-0 z-40 border-b border-ink-200 bg-white/95 backdrop-blur">
       <Container className="flex h-16 items-center justify-between gap-4">
         <Link href="/" className="flex shrink-0 items-center gap-2 whitespace-nowrap font-bold text-ink-900">
-          <span aria-hidden="true" className="inline-flex size-8 items-center justify-center rounded-lg bg-brand-700 text-white">+</span>
+          <Logo />
           <span className="text-base sm:text-lg">{SITE_NAME}</span>
         </Link>
 

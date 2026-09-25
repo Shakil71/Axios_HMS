@@ -7,7 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '@/lib/api-client';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { SITE_NAME } from '@/lib/config';
-import { Alert, Button, Container, Skeleton, cx } from './ui';
+import { Alert, Button, Container, Logo, Skeleton, cx } from './ui';
 
 const NAV = [
   { href: '/patient/dashboard', label: 'Home', icon: '⌂' },
@@ -48,7 +48,7 @@ function Gate({ children }: { children: ReactNode }) {
     <div className="min-h-dvh bg-ink-50 pb-20 lg:pb-0">
       <header className="sticky top-0 z-30 border-b border-ink-200 bg-white">
         <Container className="flex h-14 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-bold text-ink-900"><span aria-hidden="true" className="inline-flex size-7 items-center justify-center rounded-md bg-brand-700 text-white">+</span><span className="hidden sm:inline">{SITE_NAME}</span></Link>
+          <Link href="/" className="flex items-center gap-2 font-bold text-ink-900"><Logo size={30} /><span className="hidden sm:inline">{SITE_NAME}</span></Link>
           <nav aria-label="Portal" className="hidden items-center gap-1 lg:flex">
             {NAV.map((n) => <NavLink key={n.href} {...n} />)}
           </nav>

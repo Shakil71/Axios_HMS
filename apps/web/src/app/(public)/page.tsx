@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { CountryCardView, DoctorCardView, Grid, HospitalCardView } from '@/components/cards';
 import { JsonLd, faqLd } from '@/components/json-ld';
@@ -23,6 +24,13 @@ const STEPS = [
   ['Visa and travel help', 'We guide you through visa documents, flights and stay.'],
   ['Treatment abroad', 'A local coordinator supports you during your treatment.'],
   ['Return and follow-up', 'We help with your return journey and follow-up care.'],
+];
+
+// Generic stock photography (see public/images/CREDITS.md): the people shown are not our staff or partner doctors.
+const SUPPORT = [
+  { title: 'A coordinator for your case', text: 'One person reviews your reports, answers your questions and keeps you updated.', image: '/images/care-coordination.jpg', alt: 'A doctor in a white coat with a stethoscope reviewing information on a tablet', position: 'center' },
+  { title: 'Hospitals and doctors, checked', text: 'Profiles are entered and verified by our team before they are published.', image: '/images/hospital-ward.jpg', alt: 'A clean, bright hospital ward with neatly made beds', position: 'center' },
+  { title: 'Visa, flights and stay', text: 'Document checklists, bookings and airport pickup arranged for you.', image: '/images/travel-flight.jpg', alt: 'View of an aircraft wing against a blue sky through a plane window', position: 'center 55%' },
 ];
 
 const WHY = [
@@ -53,7 +61,7 @@ export default async function HomePage() {
       />
 
       <section className="bg-gradient-to-b from-brand-50 to-white">
-        <Container className="grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-[1.4fr_1fr] lg:py-24">
+        <Container className="grid items-center gap-12 py-12 sm:py-16 lg:grid-cols-[1.05fr_1fr] lg:py-20">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">Treatment abroad, made clearer</p>
             <h1 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">Trusted medical treatment abroad, from consultation to recovery</h1>
@@ -67,20 +75,51 @@ export default async function HomePage() {
             </div>
             <p className="mt-4 text-sm text-ink-600">We coordinate care and paperwork. Medical advice always comes from licensed doctors.</p>
           </div>
-          <aside aria-label="What we help with" className="hidden rounded-2xl border border-ink-200 bg-white p-6 shadow-card lg:block">
-            <p className="text-sm font-semibold uppercase tracking-wide text-ink-500">What we help with</p>
-            <ul className="mt-4 space-y-3">
-              {['Finding the right doctor and hospital', 'Booking your consultation', 'Preparing visa documents', 'Flights, hotel and airport pickup', 'Support during treatment and follow-up'].map((t) => (
-                <li key={t} className="flex items-start gap-3 text-ink-800"><span aria-hidden="true" className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">✓</span>{t}</li>
-              ))}
-            </ul>
-            <LinkButton href="/services" variant="ghost" className="mt-4 px-0">See all services →</LinkButton>
-          </aside>
+
+          <div className="relative mb-16 sm:mb-10">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-3xl bg-ink-100 shadow-pop lg:aspect-[5/6]">
+              <Image
+                src="/images/hero-corridor.jpg"
+                alt="A team of doctors and nurses walking together down a bright hospital corridor"
+                fill
+                priority
+                sizes="(min-width: 1024px) 45vw, 100vw"
+                className="object-cover"
+              />
+            </div>
+            <aside aria-label="What we help with" className="absolute -bottom-12 left-4 right-4 rounded-2xl border border-ink-200 bg-white p-5 shadow-pop sm:-bottom-8 sm:-left-6 sm:right-auto sm:max-w-xs">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">What we help with</p>
+              <ul className="mt-3 space-y-2 text-sm text-ink-800">
+                {['Doctor and hospital options', 'Consultation booking', 'Visa documents', 'Flights, hotel and pickup'].map((t) => (
+                  <li key={t} className="flex items-center gap-2.5">
+                    <span aria-hidden="true" className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-800">✓</span>
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </aside>
+          </div>
         </Container>
       </section>
 
+      <Section title="Care that goes with you" subtitle="One team supports your whole journey, so you always know what happens next.">
+        <ul className="grid gap-6 md:grid-cols-3">
+          {SUPPORT.map((c) => (
+            <li key={c.title} className="overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-card">
+              <div className="relative aspect-[4/3] bg-ink-100">
+                <Image src={c.image} alt={c.alt} fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" style={{ objectPosition: c.position }} />
+              </div>
+              <div className="p-5">
+                <h3 className="text-lg font-semibold">{c.title}</h3>
+                <p className="mt-1 text-sm text-ink-600">{c.text}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
       {!!categories?.length && (
-        <Section title="Popular treatment categories" subtitle="Find doctors and hospitals by the kind of care you need.">
+        <Section title="Popular treatment categories" subtitle="Find doctors and hospitals by the kind of care you need." className="bg-ink-50">
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {categories.map((c) => (
               <li key={c.id}>
@@ -94,24 +133,24 @@ export default async function HomePage() {
       )}
 
       {!!countries.data.length && (
-        <Section title="Featured countries" subtitle="Destinations our patients most often ask about." action={<LinkButton href="/countries" variant="secondary">All countries</LinkButton>} className="bg-ink-50">
+        <Section title="Featured countries" subtitle="Destinations our patients most often ask about." action={<LinkButton href="/countries" variant="secondary">All countries</LinkButton>}>
           <Grid>{countries.data.map((c) => <CountryCardView key={c.id} c={c} />)}</Grid>
         </Section>
       )}
 
       {!!hospitals.data.length && (
-        <Section title="Featured hospitals" action={<LinkButton href="/hospitals" variant="secondary">All hospitals</LinkButton>}>
+        <Section title="Featured hospitals" action={<LinkButton href="/hospitals" variant="secondary">All hospitals</LinkButton>} className="bg-ink-50">
           <Grid>{hospitals.data.map((h) => <HospitalCardView key={h.id} h={h} />)}</Grid>
         </Section>
       )}
 
       {!!doctors.data.length && (
-        <Section title="Featured doctors" subtitle="Profiles are entered and verified by our team." action={<LinkButton href="/doctors" variant="secondary">All doctors</LinkButton>} className="bg-ink-50">
+        <Section title="Featured doctors" subtitle="Profiles are entered and verified by our team." action={<LinkButton href="/doctors" variant="secondary">All doctors</LinkButton>}>
           <Grid>{doctors.data.map((d) => <DoctorCardView key={d.id} d={d} />)}</Grid>
         </Section>
       )}
 
-      <Section title="How it works" subtitle="Seven simple steps from your first message to your follow-up.">
+      <Section title="How it works" subtitle="Seven simple steps from your first message to your follow-up." className="bg-ink-50">
         <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map(([title, text], i) => (
             <li key={title} className="rounded-xl border border-ink-200 bg-white p-5 shadow-card">
@@ -123,7 +162,7 @@ export default async function HomePage() {
         </ol>
       </Section>
 
-      <Section title="Why patients choose us" className="bg-ink-50">
+      <Section title="Why patients choose us">
         <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {WHY.map(([title, text]) => (
             <li key={title}>
@@ -135,8 +174,8 @@ export default async function HomePage() {
       </Section>
 
       {!!faqs?.length && (
-        <Section title="Common questions" action={<LinkButton href="/faq" variant="secondary">All questions</LinkButton>}>
-          <div className="divide-y divide-ink-200 rounded-xl border border-ink-200">
+        <Section title="Common questions" action={<LinkButton href="/faq" variant="secondary">All questions</LinkButton>} className="bg-ink-50">
+          <div className="divide-y divide-ink-200 rounded-xl border border-ink-200 bg-white">
             {faqs.slice(0, 5).map((f) => (
               <details key={f.id} className="group p-5">
                 <summary className="cursor-pointer list-none font-semibold text-ink-900 [&::-webkit-details-marker]:hidden">{f.question}</summary>
