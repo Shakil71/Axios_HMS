@@ -40,3 +40,10 @@ If it returns `NOT_CONFIGURED`, open the API project's Function Logs: the first 
 - Rate limiting counters are in memory per function instance, so limits are approximate on serverless. Move counters to Redis (Upstash) for strict limits.
 - Use a pooled `DATABASE_URL` at runtime (add `&connection_limit=1` if you see connection errors).
 - If the web app and API later share a custom domain (for example `www.` and `api.`), you can drop the `/api` proxy and call the API directly.
+
+## Sample-data fallback (web)
+
+While the API is not reachable (for example before its database is configured) the public pages show a built-in sample directory
+(fictional doctors, hospitals, countries) under a "Sample data" notice, so the site is never blank. It switches off by itself once the
+API answers. To disable it entirely set `DIRECTORY_FALLBACK=off` on the web project. The portal (sign in, cases, documents) always needs the real API.
+Regenerate the snapshot after changing the demo seed: start the local API and run `node apps/web/scripts/snapshot-directory.cjs`.
