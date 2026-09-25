@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next';
 
-const API = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
+const API = process.env.API_INTERNAL_URL ?? (process.env.VERCEL ? 'https://axios-hms-api.vercel.app' : 'http://localhost:4000');
 const dev = process.env.NODE_ENV !== 'production';
 
 // Pragmatic CSP: Next injects small inline bootstrap scripts, and public pages are static/ISR,

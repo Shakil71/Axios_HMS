@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { clientIp } from './common/http/client-ip';
 import { randomUUID } from 'crypto';
 import { LoggerModule } from 'nestjs-pino';
 import { AuditModule } from './audit/audit.service';
@@ -18,6 +19,12 @@ import { PatientsModule } from './patients/patients.controller';
 import { AuthGuard, PermissionsGuard } from './rbac/guards';
 import { StorageModule } from './storage/storage.service';
 import { RbacModule } from './rbac/scope.service';
+
+class ClientIpThrottlerGuard extends ThrottlerGuard {
+  protected async getTracker(req: Record<string, any>): Promise<string> {
+    return clientIp(req as never) ?? 'unknown';
+  }
+}
 
 @Module({
   imports: [
@@ -52,7 +59,7 @@ import { RbacModule } from './rbac/scope.service';
     DocumentsModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: ClientIpThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

@@ -1,4 +1,7 @@
 import 'reflect-metadata';
+import './config/vercel-env';
+// Nest loads its HTTP adapter with a dynamic require, which Vercel's file tracer cannot see: import it explicitly.
+import '@nestjs/platform-express';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void;

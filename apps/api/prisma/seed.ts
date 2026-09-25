@@ -8,11 +8,11 @@
  * Optional: SEED_SUPERADMIN_EMAIL + SEED_SUPERADMIN_PASSWORD to create the first SUPER_ADMIN.
  */
 import { PrismaClient } from '@prisma/client';
-import * as argon2 from 'argon2';
+import * as argon2 from '@node-rs/argon2';
 import { syncRbac } from '../src/rbac/rbac-seed';
 
 const prisma = new PrismaClient();
-const hash = (pw: string) => argon2.hash(pw, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
+const hash = (pw: string) => argon2.hash(pw, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
 const DEMO = 'DEMO';
 
 async function upsertUser(email: string, fullName: string, role: string, password: string, phone: string) {

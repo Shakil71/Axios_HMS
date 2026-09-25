@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
-import * as argon2 from 'argon2';
+import * as argon2 from '@node-rs/argon2';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
@@ -44,7 +44,7 @@ export async function makeUser(
       email,
       phone: `+88017000${String(10000 + n)}`,
       fullName: `Test ${role} ${n}`,
-      passwordHash: await argon2.hash(PASSWORD, { type: argon2.argon2id, memoryCost: 8192, timeCost: 2, parallelism: 1 }),
+      passwordHash: await argon2.hash(PASSWORD, { memoryCost: 8192, timeCost: 2, parallelism: 1 }),
       status: opts.verified === false ? 'PENDING_VERIFICATION' : 'ACTIVE',
       emailVerifiedAt: opts.verified === false ? null : new Date(),
       roles: { create: roles.map((r) => ({ roleId: r.id })) },

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import * as argon2 from 'argon2';
+import * as argon2 from '@node-rs/argon2'; // prebuilt binaries: works on Vercel/Lambda without compiling; hashes are standard Argon2id PHC strings
 import { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { AuditService } from '../audit/audit.service';
@@ -13,7 +13,7 @@ import { AuthUser } from '../rbac/auth-user';
 import { CaptchaService } from './captcha.service';
 import { RegisterDto } from './auth.schemas';
 
-const ARGON = { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
+const ARGON = { memoryCost: 19456, timeCost: 2, parallelism: 1 } as const; // algorithm defaults to Argon2id
 const MAX_FAILURES = 5;
 const CAPTCHA_AFTER_FAILURES = 3;
 const REUSE_GRACE_MS = 10_000;

@@ -1,5 +1,6 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import type { Request } from 'express';
+import { clientIp } from './client-ip';
 
 export interface ReqCtx {
   ip: string | null;
@@ -7,7 +8,7 @@ export interface ReqCtx {
 }
 
 export const ctxOf = (req: Request): ReqCtx => ({
-  ip: req.ip ?? null,
+  ip: clientIp(req),
   userAgent: (req.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null,
 });
 

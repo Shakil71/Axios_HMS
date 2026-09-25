@@ -28,5 +28,8 @@
     "react-dom": "^19.3.0",
     "react-hook-form": "^7.88.0",
     "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
