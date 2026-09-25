@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/next';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { SITE_NAME, SITE_URL } from '@/lib/config';
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Skip to content
         </a>
         {children}
+        <Analytics />
       </body>
     </html>
   );
