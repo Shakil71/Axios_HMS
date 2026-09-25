@@ -29,6 +29,10 @@ npm run dev -w @hms/web                # web on :3000  (proxies /api to :4000)
 With Docker: `docker compose -f infra/docker-compose.yml up` gives Postgres/Redis/MinIO (set `S3_SSE=none` for MinIO).
 Demo logins after seeding: `patient@`, `coordinator@`, `admin@demo.hms.test` (all sample data is labelled DEMO).
 
+## Deploy (Vercel)
+
+Push to `main` and Vercel redeploys. The API build migrates the database and syncs roles automatically. One-time setup (database, secrets, storage): [docs/06-vercel-deployment.md](docs/06-vercel-deployment.md).
+
 ## Tests
 
 ```bash
