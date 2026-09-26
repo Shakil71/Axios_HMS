@@ -10,10 +10,11 @@ let ready: Promise<Handler> | undefined;
 /** Builds the Nest app once per warm serverless instance and returns its Express handler. */
 async function bootstrap(): Promise<Handler> {
   // Loaded lazily so a configuration error (missing env var) is caught and reported instead of crashing the module load.
-  const { NestFactory } = await import('@nestjs/core');
-  const { Logger } = await import('nestjs-pino');
-  const { AppModule } = await import('./app.module');
-  const { configureApp } = await import('./app.setup');
+  const { NestFactory } = require('@nestjs/core') as typeof import('@nestjs/core');
+  const { Logger } = require('nestjs-pino') as typeof import('nestjs-pino');
+  // require() (not import()) so the module system stays CommonJS and Vercel's file tracer follows it, as before.
+  const { AppModule } = require('./app.module') as typeof import('./app.module');
+  const { configureApp } = require('./app.setup') as typeof import('./app.setup');
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
   configureApp(app);
