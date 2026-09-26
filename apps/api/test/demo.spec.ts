@@ -1,7 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from '@node-rs/argon2';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD_DEFAULT, seedDemoWorld } from '../src/demo/demo';
-import { demoDatabase } from '../src/demo/demo-db';
+import { PGlite } from '@electric-sql/pglite';
+import { demoDatabase, shiftDates } from '../src/demo/demo-db';
 import { syncRbac } from '../src/rbac/rbac-seed';
 
 /** The demo world must build on the in-memory database (no external Postgres) and stay internally consistent. */
@@ -88,5 +89,20 @@ describe('demo world (in-memory Postgres)', () => {
     expect(await prisma.auditLog.count()).toBeGreaterThan(100);
     const a = await prisma.auditLog.findFirstOrThrow();
     await expect(prisma.auditLog.delete({ where: { id: a.id } })).rejects.toThrow(/append-only/);
+  });
+
+  it('survives a snapshot round trip with identical ids, and shifts dates forward without tripping the audit trigger', async () => {
+    const copy = new PGlite({ loadDataDir: await demoDatabase().db.dumpDataDir('gzip') });
+    await copy.waitReady;
+    const ids = async (db: PGlite) => (await db.query<{ id: string }>('SELECT id FROM medical_cases ORDER BY id')).rows.map((r) => r.id);
+    expect(await ids(copy)).toEqual(await ids(demoDatabase().db));
+    expect(await ids(copy)).toHaveLength(await prisma.medicalCase.count());
+
+    const newest = async () => new Date((await copy.query<{ m: string }>('SELECT max("createdAt")::text AS m FROM audit_logs')).rows[0].m.replace(' ', 'T') + 'Z').getTime();
+    const before = await newest();
+    await shiftDates(copy, 5 * 86_400_000);
+    expect((await newest()) - before).toBe(5 * 86_400_000);
+    await expect(copy.exec('DELETE FROM audit_logs')).rejects.toThrow(/append-only/); // trigger is active again afterwards
+    await copy.close();
   });
 });

@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 /** E2E runs against already-running servers: web on :3000 (next start) and API on :4000, seeded with demo data. */
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60_000,
+  timeout: 90_000,
+  expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],

@@ -19,13 +19,15 @@ if (env.VERCEL) {
 
 /**
  * DEMO MODE: no database configured (or DEMO_MODE=true) → the API runs on an in-memory Postgres (PGlite) that is
- * migrated and filled with demo users and data at start-up. Data is not persistent. Secrets are derived (not random) so
- * every serverless instance of the same project accepts the same tokens. As soon as DATABASE_URL is set this switches off.
+ * migrated and filled with demo users and data (from a build-time snapshot when present, otherwise seeded at start-up).
+ * Data is not persistent. Secrets are derived (not random) so every serverless instance accepts the same tokens.
+ * As soon as DATABASE_URL is set this switches off.
  */
 if (!env.DATABASE_URL || env.DEMO_MODE === 'true') {
   env.DEMO_MODE = 'true';
   env.DATABASE_URL = 'postgresql://demo:demo@localhost:5432/demo'; // placeholder; the PGlite adapter ignores it
-  const seed = `${env.VERCEL_PROJECT_ID ?? env.VERCEL_URL ?? 'local-demo'}|hms-demo`;
+  // Constant on purpose: the build-time demo snapshot holds data encrypted with this key, and demo data is public anyway.
+  const seed = 'hms-demo-world';
   env.JWT_SECRET ||= createHash('sha256').update(`jwt|${seed}`).digest('base64url');
   env.FIELD_ENCRYPTION_KEY ||= createHash('sha256').update(`field|${seed}`).digest('base64');
   env.STORAGE_DRIVER ||= 'memory';

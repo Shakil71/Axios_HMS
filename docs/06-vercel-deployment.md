@@ -49,12 +49,16 @@ then lists the demo accounts for the admin, staff, doctor and patient dashboards
 `https://axios-hms-api.vercel.app/api/v1/health/live` shows `"demo": true` while it is active.
 
 Limits, by design:
-- Data is **not persistent**. Each cold start (and each extra function instance) begins with a fresh copy of the demo world, so changes made
-  during a demo can disappear, and a session can end early if a request lands on a different instance. Good for demonstrations, not for real patients.
+- Data is **not persistent**. The demo world is seeded once at build time into a snapshot (`scripts/build-demo-snapshot.cjs`); every function
+  instance boots from that same snapshot, so ids, sign-in sessions and links work on any instance, and dates are shifted forward on boot so
+  appointments stay "upcoming". Anything a visitor *changes* (a new appointment, an uploaded file) lives only in the memory of the instance that handled it
+  and disappears when that instance is recycled, so it may not show on the next request. Good for demonstrations, not for real patients.
 - Do not put real personal or medical data into a demo-mode deployment.
 - To go live, add a Postgres database and `JWT_SECRET` / `FIELD_ENCRYPTION_KEY` (steps above). Demo mode switches itself off as soon as `DATABASE_URL` exists
   (set `DEMO_MODE=true` to force it back on, `DEMO_PASSWORD` to change the shared password).
-- The build copies PGlite's WebAssembly runtime into `dist/pglite-assets` (`scripts/copy-pglite-assets.cjs`) because Vercel's file tracing cannot see it.
+- The build copies PGlite's WebAssembly runtime and the snapshot into `dist/pglite-assets` (`scripts/copy-pglite-assets.cjs`, `scripts/build-demo-snapshot.cjs`) because Vercel's file tracing cannot see them.
+  Locally, `npm run demo:snapshot -w @hms/api` (after `npm run build`) does the same; without a snapshot the API seeds itself at start-up.
+- Demo sign-in uses stateless signed refresh tokens (valid on any instance). Real deployments keep database-backed, rotating tokens with reuse detection.
 
 ## Sample-data fallback (web)
 

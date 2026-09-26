@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from '@node-rs/argon2'; // prebuilt binaries: works on Vercel/Lambda without compiling; hashes are standard Argon2id PHC strings
-import { randomUUID } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../common/crypto/crypto.service';
 import { conflict, forbidden, tooMany, unauthorized } from '../common/http/errors';
 import { ReqCtx } from '../common/http/request-context';
 import { PrismaService, Tx } from '../common/prisma.service';
-import { getEnv } from '../config/env';
+import { getEnv, isDemo } from '../config/env';
 import { MailService } from '../mail/mail.service';
 import { AuthUser } from '../rbac/auth-user';
 import { CaptchaService } from './captcha.service';
@@ -173,8 +173,8 @@ export class AuthService {
 
   private async issueSession(userId: string, sv: number, ctx: ReqCtx, familyId: string = randomUUID(), tx?: Tx): Promise<Session & { recordId: string }> {
     const db = tx ?? this.prisma;
-    const refreshToken = this.crypto.randomToken(48);
     const refreshExpiresAt = new Date(Date.now() + getEnv().REFRESH_TOKEN_TTL_DAYS * 86_400_000);
+    const refreshToken = isDemo() ? this.demoRefreshToken(userId, sv, refreshExpiresAt) : this.crypto.randomToken(48);
     const rec = await db.refreshToken.create({
       data: { userId, familyId, tokenHash: this.crypto.hashToken(refreshToken), expiresAt: refreshExpiresAt, ip: ctx.ip, userAgent: ctx.userAgent },
     });
@@ -182,10 +182,31 @@ export class AuthService {
     return { accessToken: token, expiresIn: ttl, refreshToken, refreshExpiresAt, recordId: rec.id };
   }
 
+  /**
+   * Demo mode only: the API runs as several independent serverless instances that each hold their own in-memory database, so a
+   * refresh token cannot be looked up. It is a signed, self-contained value instead (user, session version, expiry) that any
+   * instance can verify. Password changes still end these sessions because the session version is part of the signature.
+   */
+  private demoRefreshToken(userId: string, sv: number, exp: Date) {
+    const body = `${userId}.${sv}.${exp.getTime()}`;
+    return `d1.${body}.${createHmac('sha256', getEnv().JWT_SECRET).update(`refresh|${body}`).digest('hex')}`;
+  }
+
+  private async refreshDemo(raw: string, ctx: ReqCtx, expired: () => Error): Promise<Session> {
+    const [, userId, sv, expMs, sig] = raw.split('.');
+    const expected = createHmac('sha256', getEnv().JWT_SECRET).update(`refresh|${userId}.${sv}.${expMs}`).digest('hex');
+    if (!sig || sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected)) || !(Number(expMs) > Date.now())) throw expired();
+    const u = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!u || u.deletedAt || !['ACTIVE', 'PENDING_VERIFICATION'].includes(u.status) || u.sessionVersion !== Number(sv)) throw expired();
+    const { recordId: _r, ...session } = await this.issueSession(u.id, u.sessionVersion, ctx);
+    return session;
+  }
+
   /** Refresh-token rotation with reuse detection (a replayed token revokes its whole family). */
   async refresh(rawToken: string | undefined, ctx: ReqCtx): Promise<Session> {
     const expired = () => unauthorized('Your session has expired. Please sign in again.', 'SESSION_EXPIRED');
     if (!rawToken) throw expired();
+    if (isDemo() && rawToken.startsWith('d1.')) return this.refreshDemo(rawToken, ctx, expired);
 
     const rec = await this.prisma.refreshToken.findUnique({ where: { tokenHash: this.crypto.hashToken(rawToken) }, include: { user: true } });
     if (!rec) throw expired();
