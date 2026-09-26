@@ -8,7 +8,9 @@ import { createHash } from 'crypto';
 const env = process.env;
 
 // Vercel Postgres / Neon integrations expose these instead of DATABASE_URL.
-env.DATABASE_URL ||= env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || env.DATABASE_URL_UNPOOLED;
+// (assigning `undefined` to process.env would store the string "undefined", so only assign a real value)
+const provided = env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || env.DATABASE_URL_UNPOOLED;
+if (!env.DATABASE_URL && provided) env.DATABASE_URL = provided;
 
 if (env.VERCEL) {
   // Origin of the web app: used for the CSRF/Origin check, CORS and links in emails.

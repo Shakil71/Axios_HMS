@@ -28,9 +28,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   } catch (e) {
     ready = undefined; // retry on the next request
     // Env validation messages list variable names only, never values.
-    console.error('API failed to start:', e instanceof Error ? e.message : 'unknown error');
+    const reason = (e instanceof Error ? e.message : 'unknown error').slice(0, 300);
+    console.error('API failed to start:', reason);
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ success: false, error: { code: 'NOT_CONFIGURED', message: 'The service is not configured correctly. Please try again later.' } }));
+    res.end(JSON.stringify({ success: false, error: { code: 'NOT_CONFIGURED', message: 'The service is not configured correctly. Please try again later.', ...(process.env.DEMO_MODE === 'true' ? { detail: reason } : {}) } }));
   }
 }
