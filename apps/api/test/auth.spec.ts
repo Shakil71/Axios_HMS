@@ -100,6 +100,22 @@ describe('auth', () => {
     expect(await t.prisma.auditLog.count({ where: { action: 'auth.token_reuse' } })).toBeGreaterThanOrEqual(1);
   });
 
+  it('lets a client whose refresh response was lost recover within the grace window, but not after logout', async () => {
+    const u = await makeUser(t.prisma, 'PATIENT');
+    const { cookie } = await login(t.http, u.email);
+    const first = await request(t.http()).post(`${API}/auth/refresh`).set(CSRF).set('Cookie', cookie!);
+    expect(first.status).toBe(200);
+    const again = await request(t.http()).post(`${API}/auth/refresh`).set(CSRF).set('Cookie', cookie!);
+    expect(again.status).toBe(200);
+    expect(await t.prisma.auditLog.count({ where: { action: 'auth.token_reuse', actorId: u.id } })).toBe(0);
+
+    const latest = (again.headers['set-cookie'] as unknown as string[])[0];
+    const out = await request(t.http()).post(`${API}/auth/logout`).set(CSRF).set('Cookie', latest);
+    expect(out.status).toBe(204);
+    const afterLogout = await request(t.http()).post(`${API}/auth/refresh`).set(CSRF).set('Cookie', cookie!);
+    expect(afterLogout.status).toBe(401);
+  });
+
   it('requires the CSRF header and a matching Origin on cookie-authenticated endpoints', async () => {
     const u = await makeUser(t.prisma, 'PATIENT');
     const { cookie } = await login(t.http, u.email);

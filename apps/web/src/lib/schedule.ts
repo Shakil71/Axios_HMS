@@ -1,11 +1,11 @@
 export interface Slot {
-  id: string;
+  id?: string;
   dayOfWeek: number; // 0 = Sunday
   startTime: string; // HH:MM
   endTime: string;
   timezone: string; // IANA, the doctor's hospital time
   method: 'IN_PERSON' | 'VIDEO' | 'PHONE';
-  notes: string | null;
+  notes?: string | null;
 }
 
 export const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -61,7 +61,7 @@ export function scheduleRows(slots: Slot[]): ScheduleRow[] {
         bangladesh: `${bd.startTime}–${bd.endTime}${sameDay ? '' : ` (${DAY_SHORT[bd.dayOfWeek]})`}`,
         place: (s.timezone.split('/')[1] ?? s.timezone).replace(/_/g, ' '),
         method: METHOD_LABEL[s.method],
-        notes: s.notes,
+        notes: s.notes ?? null,
         first: Math.min(...g.map((x) => x.dayOfWeek)),
       };
     })

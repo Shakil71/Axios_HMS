@@ -190,18 +190,28 @@ export class AuthService {
     const rec = await this.prisma.refreshToken.findUnique({ where: { tokenHash: this.crypto.hashToken(rawToken) }, include: { user: true } });
     if (!rec) throw expired();
 
+    // A token that was rotated moments ago may be presented again by a client that never received the response
+    // (navigation during the request, flaky network). Within a short window that client gets a fresh token from the
+    // same family instead of being signed out; anything else replayed is treated as theft and kills the family.
+    let recoveringLostResponse = false;
     if (rec.revokedAt) {
-      const withinGrace = rec.replacedById && Date.now() - rec.revokedAt.getTime() < REUSE_GRACE_MS;
+      const successor = rec.replacedById ? await this.prisma.refreshToken.findUnique({ where: { id: rec.replacedById } }) : null;
+      const withinGrace = !!successor && (!successor.revokedAt || !!successor.replacedById) && Date.now() - rec.revokedAt.getTime() < REUSE_GRACE_MS;
       if (!withinGrace) {
         await this.prisma.refreshToken.updateMany({ where: { familyId: rec.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
         await this.audit.log({ actorId: rec.userId, action: 'auth.token_reuse', resourceType: 'User', resourceId: rec.userId, ...ctx });
+        throw expired();
       }
-      throw expired();
+      recoveringLostResponse = true;
     }
     const u = rec.user;
     if (rec.expiresAt < new Date() || u.deletedAt || !['ACTIVE', 'PENDING_VERIFICATION'].includes(u.status)) throw expired();
 
     return this.prisma.$transaction(async (tx) => {
+      if (recoveringLostResponse) {
+        const { recordId: _r, ...session } = await this.issueSession(u.id, u.sessionVersion, ctx, rec.familyId, tx);
+        return session;
+      }
       const claimed = await tx.refreshToken.updateMany({ where: { id: rec.id, revokedAt: null }, data: { revokedAt: new Date() } });
       if (claimed.count !== 1) throw expired();
       const next = await this.issueSession(u.id, u.sessionVersion, ctx, rec.familyId, tx);

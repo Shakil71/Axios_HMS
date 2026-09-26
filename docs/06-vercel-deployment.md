@@ -41,6 +41,21 @@ If it returns `NOT_CONFIGURED`, open the API project's Function Logs: the first 
 - Use a pooled `DATABASE_URL` at runtime (add `&connection_limit=1` if you see connection errors).
 - If the web app and API later share a custom domain (for example `www.` and `api.`), you can drop the `/api` proxy and call the API directly.
 
+## Demo mode (no database needed)
+
+If the API project has **no** `DATABASE_URL`, it starts in demo mode instead of reporting `NOT_CONFIGURED`: an in-memory Postgres (PGlite), the real
+migrations, and a full demo world (see README). Secrets are derived from the Vercel project id so nothing has to be configured. The sign-in page
+then lists the demo accounts for the admin, staff, doctor and patient dashboards (password `Demo-Access-2026`).
+`https://axios-hms-api.vercel.app/api/v1/health/live` shows `"demo": true` while it is active.
+
+Limits, by design:
+- Data is **not persistent**. Each cold start (and each extra function instance) begins with a fresh copy of the demo world, so changes made
+  during a demo can disappear, and a session can end early if a request lands on a different instance. Good for demonstrations, not for real patients.
+- Do not put real personal or medical data into a demo-mode deployment.
+- To go live, add a Postgres database and `JWT_SECRET` / `FIELD_ENCRYPTION_KEY` (steps above). Demo mode switches itself off as soon as `DATABASE_URL` exists
+  (set `DEMO_MODE=true` to force it back on, `DEMO_PASSWORD` to change the shared password).
+- The build copies PGlite's WebAssembly runtime into `dist/pglite-assets` (`scripts/copy-pglite-assets.cjs`) because Vercel's file tracing cannot see it.
+
 ## Sample-data fallback (web)
 
 While the API is not reachable (for example before its database is configured) the public pages show a built-in sample directory

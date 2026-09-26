@@ -31,7 +31,7 @@ function setRefreshCookie(res: Response, s: Session) {
 function assertSameSiteIntent(req: Request) {
   if (req.headers['x-requested-with'] !== 'hms-web') throw forbidden('Request blocked.', 'CSRF');
   const origin = req.headers.origin;
-  if (origin && origin !== new URL(getEnv().APP_URL).origin) throw forbidden('Request blocked.', 'CSRF');
+  if (!isDemo() && origin && origin !== new URL(getEnv().APP_URL).origin) throw forbidden('Request blocked.', 'CSRF');
 }
 
 const sessionBody = (s: Session) => ({ accessToken: s.accessToken, expiresIn: s.expiresIn });
@@ -77,7 +77,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Throttle({ default: { limit: isDemo() ? 600 : 120, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(200)
   async refresh(@Req() req: Request, @Ctx() ctx: ReqCtx, @Res({ passthrough: true }) res: Response) {

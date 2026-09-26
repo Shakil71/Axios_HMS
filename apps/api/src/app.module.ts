@@ -49,7 +49,7 @@ class ClientIpThrottlerGuard extends ThrottlerGuard {
       },
     }),
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60_000, limit: 120 }],
+      throttlers: [{ ttl: 60_000, limit: 600 }],
       skipIf: () => !getEnv().RATE_LIMIT_ENABLED,
     }),
     PrismaModule,

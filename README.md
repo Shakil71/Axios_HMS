@@ -27,7 +27,27 @@ npm run dev -w @hms/web                # web on :3000  (proxies /api to :4000)
 ```
 
 With Docker: `docker compose -f infra/docker-compose.yml up` gives Postgres/Redis/MinIO (set `S3_SSE=none` for MinIO).
-Demo logins after seeding: `patient@`, `coordinator@`, `admin@demo.hms.test` (all sample data is labelled DEMO).
+### Demo mode (no database, no setup)
+
+Start the API **without** `DATABASE_URL` (or with `DEMO_MODE=true`) and it runs on an in-memory Postgres, applies the real migrations and seeds a
+complete demo world: 17 cases, 9 patients, appointments, visa files, travel plans, invoices, documents (real generated PDFs) and audit history.
+Nothing is written to disk; data resets when the process restarts.
+
+```bash
+npm run build -w @hms/api && DEMO_MODE=true NODE_ENV=production PORT=4000 node apps/api/dist/src/main.js
+npm run dev -w @hms/web
+```
+
+The sign-in page lists every demo account (one click fills the form). All share the password `Demo-Access-2026` (override with `DEMO_PASSWORD`):
+
+| Dashboard | Account | Lands on |
+| --- | --- | --- |
+| Admin (everything) | `superadmin@demo.hms.test`, `admin@demo.hms.test` | `/admin` |
+| Staff | `coordinator@`, `coordinator2@`, `casemanager@`, `visa@`, `travel@`, `finance@demo.hms.test` (each sees only what its role allows) | `/staff` |
+| Doctor | `doctor@`, `doctor2@`, `doctor3@demo.hms.test` | `/doctor` |
+| Patient | `patient@demo.hms.test` (+ 8 more patients) | `/patient/dashboard` |
+
+Demo mode is for demonstrations only: it is never enabled when a real `DATABASE_URL` is configured unless you set `DEMO_MODE=true` explicitly.
 
 ## Deploy (Vercel)
 
@@ -36,10 +56,10 @@ Push to `main` and Vercel redeploys. The API build migrates the database and syn
 ## Tests
 
 ```bash
-npm test -w @hms/api                   # 78 integration tests against a real embedded Postgres (auth, RBAC, documents, cases, directory)
+npm test -w @hms/api                   # integration tests against a real embedded Postgres (auth, RBAC, documents, cases, dashboards, demo world)
 npm run typecheck -w @hms/api && npm run typecheck -w @hms/web
-# browser tests (needs API + `next start` running and demo seed):
-npx playwright test -w @hms/web
+# browser tests: start the API in demo mode (above) and `next start`, then
+E2E_BASE_URL=http://localhost:3000 npx playwright test -w @hms/web
 ```
 
 ## Phase 1 scope

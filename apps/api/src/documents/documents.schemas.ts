@@ -47,4 +47,5 @@ export const listDocumentsQuery = z.object({
   familyMemberId: z.uuid().optional(),
   category: categorySchema.optional(),
   status: z.enum(['UPLOADED', 'UNDER_REVIEW', 'VERIFIED', 'REJECTED', 'EXPIRED']).optional(),
+  pending: z.enum(['true']).optional(), // UPLOADED or UNDER_REVIEW: the review queue
 });

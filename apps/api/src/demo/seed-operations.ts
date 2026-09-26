@@ -37,7 +37,12 @@ const PATIENTS = [
 ];
 
 const DAY = 86_400_000;
-const ago = (d: number, hour = 10) => { const t = new Date(Date.now() - d * DAY); t.setHours(hour, 0, 0, 0); return t; };
+const ago = (d: number, hour = 10) => {
+  const t = new Date(Date.now() - d * DAY);
+  t.setHours(hour, 0, 0, 0);
+  if (d >= 0 && t.getTime() > Date.now()) t.setTime(Date.now() - 10 * 60_000);
+  return t;
+};
 const ahead = (d: number, hour = 10) => ago(-d, hour);
 
 /** A small but valid one-page PDF so "View" and "Download" open a real file in the demo. */

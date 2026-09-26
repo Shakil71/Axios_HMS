@@ -255,6 +255,7 @@ export class DocumentsService {
       ...(q.familyMemberId ? { familyMemberId: q.familyMemberId } : {}),
       ...(q.category ? { category: q.category } : {}),
       ...(q.status ? { status: q.status } : {}),
+      ...(q.pending ? { status: { in: ['UPLOADED' as const, 'UNDER_REVIEW' as const] } } : {}),
     };
     let access: Prisma.DocumentWhereInput;
 

@@ -13,6 +13,7 @@ const run = (cmd, args, extraEnv = {}) => {
 
 run('npx', ['prisma', 'generate']);
 run('npm', ['run', 'build']);
+run('node', ['scripts/copy-pglite-assets.cjs']);
 
 // Migrations need a direct (non-pooled) connection; poolers such as PgBouncer break advisory locks.
 const runtimeUrl = env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL;

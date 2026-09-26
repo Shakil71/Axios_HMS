@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-const PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'Demo-Password-2026!';
+const PASSWORD = process.env.E2E_DEMO_PASSWORD ?? 'Demo-Access-2026';
 const PDF = Buffer.from('%PDF-1.4\n%e2e test document\n');
 
 async function signIn(page: Page, next = '/patient/dashboard') {
@@ -67,7 +67,7 @@ test.describe('patient portal', () => {
 
   test('full journey: sign in → open a case → upload a document → see it → survive reload → sign out', async ({ page }) => {
     await signIn(page);
-    await expect(page.getByRole('heading', { name: /Hello, DEMO/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Hello, DEMO/i })).toBeVisible();
 
     // session and secrets: nothing sensitive in web storage; refresh token is httpOnly
     const storage = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
