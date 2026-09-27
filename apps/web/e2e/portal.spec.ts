@@ -15,10 +15,32 @@ async function signIn(page: Page, next = '/patient/dashboard') {
 test.describe('public site', () => {
   test('home renders directory data and passes automated accessibility checks', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Trusted medical treatment abroad');
-    await expect(page.getByRole('heading', { name: 'Featured hospitals' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Treatment abroad');
+    await expect(page.getByRole('heading', { name: 'Hospitals we have listed and checked' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Doctors' })).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(results.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+  });
+
+  test('home search deep-links into the directory filters', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Specialty').selectOption({ label: 'Cardiology' });
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page).toHaveURL(/\/doctors\?.*specialty=cardiology/);
+    await page.goto('/');
+    await page.getByRole('tab', { name: 'Hospitals' }).click();
+    await page.getByLabel('Country').selectOption({ label: 'India' });
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page).toHaveURL(/\/hospitals\?.*country=india/);
+  });
+
+  test('other public pages share the new header and footer and pass accessibility checks', async ({ page }) => {
+    for (const path of ['/countries', '/hospitals', '/treatments', '/services', '/about', '/contact', '/faq', '/visa-assistance']) {
+      await page.goto(path);
+      await expect(page.getByRole('contentinfo')).toBeVisible();
+      const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+      expect(results.violations.map((v) => `${path} ${v.id}: ${v.nodes.length}`)).toEqual([]);
+    }
   });
 
   test('doctor directory filters work without JavaScript state and detail page is server rendered', async ({ page }) => {

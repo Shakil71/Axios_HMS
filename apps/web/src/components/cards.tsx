@@ -1,24 +1,41 @@
 import Link from 'next/link';
+import Image from 'next/image';
+import { COUNTRY_IMAGES } from '@/lib/country-images';
 import { flagEmoji } from '@/lib/labels';
 import type { Country, DoctorCard, HospitalCard, TreatmentCard } from '@/lib/types';
 import { Avatar, Badge, Card, DoctorPhoto } from './ui';
 
 export function CountryCardView({ c }: { c: Country }) {
+  const photo = COUNTRY_IMAGES[c.slug];
+  const hospitals = `${c.hospitalCount} ${c.hospitalCount === 1 ? 'hospital' : 'hospitals'}`;
   return (
-    <Card className="relative flex h-full flex-col transition-shadow hover:shadow-pop">
-      <div className="flex items-center gap-3">
-        <span aria-hidden="true" className="text-3xl">{flagEmoji(c.isoCode)}</span>
-        <div>
-          <h3 className="text-lg font-semibold"><Link href={`/countries/${c.slug}`} className="text-ink-900 after:absolute after:inset-0">{c.name}</Link></h3>
-          <p className="text-sm text-ink-600">{c.hospitalCount} {c.hospitalCount === 1 ? 'hospital' : 'hospitals'}</p>
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-ink-200 bg-white shadow-card transition-shadow hover:shadow-pop">
+      {photo ? (
+        <div className="relative aspect-[16/10] overflow-hidden bg-ink-100">
+          <Image src={photo.src} alt={photo.alt} fill sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" style={{ objectPosition: photo.position }} />
+          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 to-transparent" />
+          <div className="absolute inset-x-4 bottom-3 flex items-end justify-between gap-3">
+            <h3 className="text-xl font-bold text-white"><Link href={`/countries/${c.slug}`} className="text-white no-underline after:absolute after:inset-0">{c.name}</Link></h3>
+            <span className="shrink-0 rounded-full bg-white/90 px-2.5 py-0.5 text-xs font-semibold text-ink-900">{hospitals}</span>
+          </div>
         </div>
-      </div>
-      {c.popularTreatments.length > 0 && (
-        <p className="mt-4 text-sm text-ink-600"><span className="font-medium text-ink-800">Popular: </span>{c.popularTreatments.slice(0, 3).map((t) => t.name).join(', ')}</p>
+      ) : (
+        <div className="flex items-center gap-3 p-5 pb-0">
+          <span aria-hidden="true" className="text-3xl">{flagEmoji(c.isoCode)}</span>
+          <div>
+            <h3 className="text-lg font-semibold"><Link href={`/countries/${c.slug}`} className="text-ink-900 after:absolute after:inset-0">{c.name}</Link></h3>
+            <p className="text-sm text-ink-600">{hospitals}</p>
+          </div>
+        </div>
       )}
-      {c.startingConsultationInfo && <p className="mt-2 text-sm text-ink-600">{c.startingConsultationInfo}</p>}
-      <p className="mt-auto pt-4 text-sm font-semibold text-brand-700">View hospitals →</p>
-    </Card>
+      <div className="flex flex-1 flex-col p-5">
+        {c.popularTreatments.length > 0 && (
+          <p className="text-sm text-ink-600"><span className="font-medium text-ink-800">Popular: </span>{c.popularTreatments.slice(0, 3).map((t) => t.name).join(', ')}</p>
+        )}
+        {c.startingConsultationInfo && <p className="mt-2 text-sm text-ink-600">{c.startingConsultationInfo}</p>}
+        <p className="mt-auto pt-4 text-sm font-semibold text-brand-700">View hospitals →</p>
+      </div>
+    </div>
   );
 }
 
@@ -69,7 +86,7 @@ export function DoctorCardView({ d }: { d: DoctorCard }) {
 export function TreatmentCardView({ t }: { t: TreatmentCard }) {
   return (
     <Card className="relative flex h-full flex-col transition-shadow hover:shadow-pop">
-      <Badge tone="info">{t.category.name}</Badge>
+      <div><Badge tone="info">{t.category.name}</Badge></div>
       <h3 className="mt-2 text-lg font-semibold leading-snug"><Link href={`/treatments/${t.slug}`} className="text-ink-900 after:absolute after:inset-0">{t.name}</Link></h3>
       {t.summary && <p className="mt-2 line-clamp-3 text-sm text-ink-600">{t.summary}</p>}
       <p className="mt-auto pt-4 text-sm font-semibold text-brand-700">Learn more →</p>

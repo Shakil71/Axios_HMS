@@ -17,7 +17,7 @@ export function Logo({ size = 32 }: { size?: number }) {
 }
 
 // ─── buttons ───
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'light' | 'outlineLight';
 const buttonBase =
   'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 min-h-11';
 const variants: Record<Variant, string> = {
@@ -25,6 +25,8 @@ const variants: Record<Variant, string> = {
   secondary: 'bg-white text-ink-800 border border-ink-300 hover:bg-ink-50',
   ghost: 'text-brand-700 hover:bg-brand-50',
   danger: 'bg-red-600 text-white hover:bg-red-700',
+  light: 'bg-white text-brand-900 hover:bg-brand-50 shadow-card',
+  outlineLight: 'border border-white/40 text-white hover:bg-white/10',
 };
 
 export function Button({ variant = 'primary', className, ...p }: ComponentProps<'button'> & { variant?: Variant }) {
@@ -32,7 +34,7 @@ export function Button({ variant = 'primary', className, ...p }: ComponentProps<
 }
 
 export function LinkButton({ variant = 'primary', className, ...p }: ComponentProps<typeof Link> & { variant?: Variant }) {
-  return <Link {...p} className={cx(buttonBase, variants[variant], variant === 'primary' && 'text-white', className)} />;
+  return <Link {...p} className={cx(buttonBase, variants[variant], variant === 'primary' && 'text-white', variant === 'light' && 'text-brand-900', variant === 'outlineLight' && 'text-white', className)} />;
 }
 
 // ─── layout ───
